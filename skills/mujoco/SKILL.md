@@ -22,6 +22,7 @@ If a task includes both parts, use this fixed order:
 ## Shared Rules
 
 - Do not invent MuJoCo tags, attribute names, or default behaviors. If syntax is uncertain, use official docs and existing models in the current workspace as the source of truth.
+- Do not guess user intent for scene creation or model edits. If the scene goal, robot choice, task semantics, object layout, physical constraints, output path, or validation expectation is unclear, ask a concise clarification question before creating or changing files.
 - The default output directory is `~/Documents/mujoco`. If the user does not provide an absolute path, prefer saving, searching, or resolving models there.
 - When the user asks to "list all scenes", read only from `~/Documents/mujoco` by default, and return only first-level directory names as scene names. Do not recursively expand files.
 - When the user only says "open MuJoCo" or "open a scene.xml", infer intent first:
@@ -39,5 +40,6 @@ If a task includes both parts, use this fixed order:
 
 - Viewer service entry point: `scripts/mujoco_viewer.py`
 - Control and query entry point: `scripts/mujoco_cli.py`
+- Scene physical sanity checker: `scripts/mujoco_scene_check.py`
 - Environment and path helpers: `scripts/env_bootstrap.py`, `scripts/path_utils.py`
 - Do not preload the entire `scripts/` directory. Open a script only when you need to execute or modify it.

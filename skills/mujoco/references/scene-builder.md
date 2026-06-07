@@ -24,9 +24,24 @@ Delegate those tasks to `MuJoCo Robot Control`.
 2. Reuse before rebuilding: when a real robot model exists, prefer upstream or official models before creating a placeholder from scratch.
 3. Build the smallest compilable version first, then add details.
 4. Save under `~/Documents/mujoco` with stable, readable file names.
-5. Run XML, compile, and viewer checks before reporting back.
+5. Run XML, compile, physical sanity, and viewer checks before reporting back.
 
 If the task has manipulation semantics such as grasping, pick-and-place, placing an object into a box, stacking, or picking, do not mistake "the model compiles" or "the robot moves" for "the task is executable". For these tasks, the end effector must also pass a grasp-chain check.
+
+## Clarify Before Building
+
+Do not silently fill in scene requirements when user intent is unclear. Ask before creating or changing files if the missing information can change the robot model, task feasibility, object placement, physics, or validation result.
+
+Ask a concise clarification question when any of these are unclear:
+
+- Robot identity or variant, such as `UR5` vs `UR5e`, fixed arm vs mobile base, or real upstream model vs placeholder.
+- Scene purpose, such as visual demo, grasping, sorting, navigation, obstacle crossing, or control experiment.
+- Required task semantics, especially whether objects only need to appear in the scene or must be physically graspable, stackable, sortable, or movable.
+- Object count, rough dimensions, placement relationships, support surfaces, or whether objects should be fixed or dynamic.
+- Output path, when the user references an existing scene, asks for a project-specific location, or rejects the default `~/Documents/mujoco` location without giving an exact path.
+- Validation expectation, such as compile-only, viewer check, physical sanity check, or grasp-chain validation.
+
+When asking, keep the question narrow and decision-oriented. If several details are missing, ask for the smallest set needed to avoid a wrong scene. Do not ask about implementation details that are already determined by stable skill rules, such as using `site` for debug markers or keeping fixed industrial arms mounted unless the user explicitly asks otherwise.
 
 ## Scene Listing
 
@@ -72,6 +87,46 @@ Do not escalate "add a few scene objects" into "rewrite the robot body".
 - Do not fake inertia or mass. If the model jitters, flips, or produces unrealistic torques, inspect inertia first.
 - For contact issues, check `contype` / `conaffinity` / `solref` / `solimp` / `friction` / initial interpenetration together.
 - Use only attribute names known to exist. If unsure, check official docs or current repository examples.
+
+## Initial Physical Plausibility
+
+Do not deliver a scene only because it compiles. The first frame should look physically plausible before the user touches the controls.
+
+### Robot Base Placement
+
+- For fixed industrial or tabletop manipulators, keep the robot base fixed to the world or mounted to a fixed table/base body by default. Do not add a `freejoint` to an arm base unless the user explicitly asks for a floating or mobile robot.
+- If a robot is imported from an upstream model, inspect the base frame and root body before placing it. Do not assume the robot's visual origin is at floor height.
+- Set the root `body pos` and orientation so the base stands upright on the floor, table, or mounting plate. Avoid compensating for a wrong pose by moving child geoms.
+- For mobile bases, quadrupeds, humanoids, and drones, a `freejoint` can be correct, but the initial pose still must be balanced and above the support surface.
+
+### Object And Support Placement
+
+- Place dynamic objects from their physical bottom surface, not from their center by guesswork. For a box geom with half-size `sx sy sz`, the object's center `z` should normally be `support_z + sz + small_clearance`.
+- Do not leave bins, boxes, cubes, cups, or obstacles suspended in midair unless the user explicitly asks for a falling-object or aerial scenario.
+- Fixed scene props such as tables, shelves, bins, and conveyor frames usually should not have `freejoint`.
+- Graspable objects usually should have a `freejoint`, realistic mass/inertia, nonzero friction, and an initial pose resting on a support surface without visible penetration.
+- Run a short passive simulation with zero control after construction. If a supposedly static scene object drops, rolls away, tips over, or the robot collapses, fix the initial pose, support geometry, joint setup, or inertial/contact parameters before handoff.
+
+### Sites, Markers, And Visual Helpers
+
+- Use `site` for grasp centers, target points, fingertip references, debug markers, and visual annotations. Do not use a physical `geom` sphere as a marker on top of a block.
+- If a helper marker must be a `geom`, it must be visual-only with `contype="0"` and `conaffinity="0"`, and it should be named clearly as a visual marker.
+- Do not attach small collision-enabled spheres to task objects unless they are physically part of the object requested by the user.
+
+### Physical Sanity Check
+
+Before reporting a newly built or materially modified scene, run the bundled sanity checker when MuJoCo Python is available:
+
+```bash
+python scripts/mujoco_scene_check.py /absolute/path/to/scene.xml
+```
+
+Treat failures as model issues to fix, not as viewer quirks. At minimum, investigate:
+
+- initial interpenetration contacts
+- dynamic free bodies that fall significantly from the initial pose
+- root bodies with free joints that look like fixed-base manipulators
+- tiny collision-enabled sphere geoms that look like marker mistakes
 
 ## Scene Visual Defaults
 
@@ -190,4 +245,5 @@ That window is not managed by the current skill's script process, and later comm
 
 - State the final file path.
 - State whether you modified the robot body itself or only the top-level scene.
+- State whether XML compile, physical sanity, viewer, and grasp-chain checks were performed.
 - If only static modeling was performed and runtime validation was not performed, say so explicitly.

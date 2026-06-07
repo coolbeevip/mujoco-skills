@@ -1,57 +1,57 @@
 # MuJoCo Skill
 
-一个面向 Codex 的 MuJoCo 技能，用来帮助 AI agent 更稳定地处理 MJCF 场景搭建、模型检查、viewer 启动、actuator 查询和最小控制实验。
+A MuJoCo skill for Codex that helps AI agents handle MJCF scene construction, model checks, viewer startup, actuator inspection, and minimal control experiments more reliably.
 
-演示视频：[使用演示视频](https://www.youtube.com/watch?v=G2hwzWDg8Js&t=15s)
+Demo video: [Usage demo](https://www.youtube.com/watch?v=G2hwzWDg8Js&t=15s)
 
-## 快速指南
+## Quick Guide
 
-### 1. 安装技能
+### 1. Install the Skill
 
-在终端执行：
+Run this in your terminal:
 
 ```bash
 npx skills@latest add coolbeevip/mujoco-skills
 ```
 
-安装后重启 Codex，让新的 skill metadata 被重新加载。
+After installation, restart Codex so the new skill metadata is reloaded.
 
-### 2. 创建仿真场景
+### 2. Create a Simulation Scene
 
-在 Codex 中输入：
+Enter this in Codex:
 
 ```text
-用 $mujoco 创建一个 MuJoCo 仿真场景，包含 franka_panda 机器人、一张桌子和一个可抓取物体。保存到 ~/Documents/mujoco/franka_pick/scene.xml，并打开 viewer 检查场景能否正常加载。
+Use $mujoco to create a MuJoCo simulation scene with a franka_panda robot, a table, and a graspable object. Save it to ~/Documents/mujoco/franka_pick/scene.xml, then open the viewer to check whether the scene loads correctly.
 ```
 
 ![Create simulation scene](images/build-scene.png)
 
-### 3. 操作机器人
+### 3. Operate the Robot
 
-在 Codex 中输入：
+Enter this in Codex:
 
 ```text
-用 $mujoco 打开 ~/Documents/mujoco/franka_pick/scene.xml，查询 franka_panda 的 actuator 和抓取 site，然后操作机器人抓取桌面上的物体。
+Use $mujoco to open ~/Documents/mujoco/franka_pick/scene.xml, inspect the franka_panda actuators and grasping site, then operate the robot to pick up the object on the table.
 ```
 
 ![Pick cube](images/pick-cube.png)
 
-## 更多场景
+## More Scenarios
 
 ```text
-用 $mujoco 创建一个 Universal Robots UR5e 分拣场景，包含 UR5e、传送带、两个不同颜色的方块和两个收纳盒。保存到 ~/Documents/mujoco/ur5e_sort/scene.xml，并打开 viewer 检查。
+Use $mujoco to create a Universal Robots UR5e sorting scene with a UR5e, a conveyor belt, two cubes in different colors, and two bins. Save it to ~/Documents/mujoco/ur5e_sort/scene.xml, then open the viewer to check it.
 ```
 
 ```text
-用 $mujoco 创建一个 Unitree Go1 四足机器人越障场景，包含 Go1、地面、低矮台阶和几个障碍物。保存到 ~/Documents/mujoco/go1_obstacle/scene.xml，并打开 viewer 检查。
+Use $mujoco to create a Unitree Go1 quadruped obstacle-crossing scene with a Go1, a ground plane, low steps, and several obstacles. Save it to ~/Documents/mujoco/go1_obstacle/scene.xml, then open the viewer to check it.
 ```
 
 ```text
-用 $mujoco 创建一个 Hello Robot Stretch 移动操作场景，包含 Stretch、桌面、杯子和目标托盘。保存到 ~/Documents/mujoco/stretch_tabletop/scene.xml，并打开 viewer 检查。
+Use $mujoco to create a Hello Robot Stretch mobile manipulation scene with a Stretch, a tabletop, a cup, and a target tray. Save it to ~/Documents/mujoco/stretch_tabletop/scene.xml, then open the viewer to check it.
 ```
 
 ```text
-用 $mujoco 创建一个 Shadow Hand 灵巧手操作场景，包含 Shadow Hand、桌面、球体和圆柱体。保存到 ~/Documents/mujoco/shadow_hand_dexterous/scene.xml，并打开 viewer 检查。
+Use $mujoco to create a Shadow Hand dexterous manipulation scene with a Shadow Hand, a tabletop, a sphere, and a cylinder. Save it to ~/Documents/mujoco/shadow_hand_dexterous/scene.xml, then open the viewer to check it.
 ```
 
 ## License
