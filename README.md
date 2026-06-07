@@ -1,8 +1,8 @@
 # MuJoCo Skill
 
-A MuJoCo skill for Codex that helps AI agents handle MJCF scene construction, model checks, viewer startup, actuator inspection, and minimal control experiments more reliably.
+A MuJoCo skill for AI Agent that helps AI agents handle MJCF scene construction, model checks, viewer startup, actuator inspection, and minimal control experiments more reliably.
 
-Demo video: [Usage demo](https://www.youtube.com/watch?v=G2hwzWDg8Js&t=15s)
+The examples and scene checks in this README were validated with Codex GPT-5.5.
 
 ## Quick Guide
 
