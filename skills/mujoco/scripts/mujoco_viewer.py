@@ -197,6 +197,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("scene", help="Path to the MuJoCo XML scene file.")
     parser.add_argument(
+        "--key",
+        help=(
+            "Optional keyframe to load at startup and on reset. Use a keyframe "
+            "name, numeric id, or 'first'."
+        ),
+    )
+    parser.add_argument(
         "--socket",
         help="Optional explicit UNIX socket path for mujoco_cli.py to connect to.",
     )
@@ -254,6 +261,40 @@ def list_actuators(model: Any) -> list[dict[str, Any]]:
     return [actuator_info(model, actuator_id) for actuator_id in range(model.nu)]
 
 
+def resolve_keyframe_id(model: Any, selector: str | None) -> int | None:
+    if selector is None:
+        return None
+    if model.nkey < 1:
+        raise ValueError(f"Cannot load keyframe '{selector}': model has no keyframes.")
+
+    import mujoco
+
+    stripped = selector.strip()
+    if stripped == "first":
+        return 0
+    if stripped.lstrip("-").isdigit():
+        key_id = int(stripped)
+        if key_id < 0 or key_id >= model.nkey:
+            raise IndexError(f"keyframe id {key_id} out of range [0, {model.nkey})")
+        return key_id
+
+    for key_id in range(model.nkey):
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_KEY, key_id)
+        if name == stripped:
+            return key_id
+    raise KeyError(f"Unknown keyframe name: {selector}")
+
+
+def keyframe_name(model: Any, key_id: int | None) -> str | None:
+    if key_id is None:
+        return None
+
+    import mujoco
+
+    name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_KEY, key_id)
+    return name if name else str(key_id)
+
+
 def parse_batch_assignments(command: dict[str, Any]) -> list[tuple[Any, float]]:
     raw_assignments = command.get("assignments")
     if not isinstance(raw_assignments, list) or not raw_assignments:
@@ -277,6 +318,7 @@ def handle_command(
     socket_path: Path,
     model: Any,
     data: Any,
+    initial_key_id: int | None = None,
     viewer_handle: Any | None = None,
 ) -> dict[str, Any]:
     import mujoco
@@ -296,6 +338,7 @@ def handle_command(
                 "socket_path": str(socket_path),
                 "simulation_time": float(data.time),
                 "actuator_count": model.nu,
+                "loaded_keyframe": keyframe_name(model, initial_key_id),
                 "ctrl": data.ctrl.tolist(),
             },
         }
@@ -363,7 +406,10 @@ def handle_command(
         }
 
     if command_name == "reset":
-        mujoco.mj_resetData(model, data)
+        if initial_key_id is not None:
+            mujoco.mj_resetDataKeyframe(model, data, initial_key_id)
+        else:
+            mujoco.mj_resetData(model, data)
         mujoco.mj_forward(model, data)
         if viewer_handle is not None:
             viewer_handle.sync()
@@ -384,6 +430,7 @@ def process_pending_commands(
     socket_path: Path,
     model: Any,
     data: Any,
+    initial_key_id: int | None = None,
     viewer_handle: Any | None = None,
 ) -> None:
     while True:
@@ -399,6 +446,7 @@ def process_pending_commands(
                 socket_path=socket_path,
                 model=model,
                 data=data,
+                initial_key_id=initial_key_id,
                 viewer_handle=viewer_handle,
             )
         except Exception as exc:
@@ -421,12 +469,18 @@ def main() -> None:
 
     model = mujoco.MjModel.from_xml_path(str(scene_path))
     data = mujoco.MjData(model)
+    initial_key_id = resolve_keyframe_id(model, args.key)
+    if initial_key_id is not None:
+        mujoco.mj_resetDataKeyframe(model, data, initial_key_id)
+        mujoco.mj_forward(model, data)
     request_queue: "queue.Queue[ViewerCommand]" = queue.Queue()
     control_server = ControlServer(socket_path=socket_path, request_queue=request_queue)
     control_server.start()
 
     print(f"Opening MuJoCo viewer for: {scene_path}")
     print(f"Control socket ready: {socket_path}")
+    if initial_key_id is not None:
+        print(f"Loaded keyframe: {keyframe_name(model, initial_key_id)}")
 
     try:
         with mujoco.viewer.launch_passive(model, data) as viewer_handle:
@@ -437,6 +491,7 @@ def main() -> None:
                     socket_path=socket_path,
                     model=model,
                     data=data,
+                    initial_key_id=initial_key_id,
                     viewer_handle=viewer_handle,
                 )
                 mujoco.mj_step(model, data)

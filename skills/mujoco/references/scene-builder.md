@@ -107,9 +107,20 @@ Do not deliver a scene only because it compiles. The first frame should look phy
 - Graspable objects usually should have a `freejoint`, realistic mass/inertia, nonzero friction, and an initial pose resting on a support surface without visible penetration.
 - Run a short passive simulation with zero control after construction. If a supposedly static scene object drops, rolls away, tips over, or the robot collapses, fix the initial pose, support geometry, joint setup, or inertial/contact parameters before handoff.
 
+### Sorting Scene Layout
+
+For robot sorting scenes with a conveyor, colored blocks, and bins:
+
+- Place the robot base on the conveyor's working side near the conveyor midline, not at one end or far from the active belt area.
+- Keep pick objects on the belt within the robot's reachable workspace and visually in front of the end effector.
+- Place destination bins in the same reachable work area as the pick objects. Do not put them so far across or behind the conveyor that the arm cannot plausibly place objects into them.
+- From the top view, the robot base, the belt center, the two blocks, and the two bins should form one coherent workcell. If this relationship is not obvious, adjust the layout before handoff.
+- For fixed arms such as UR5e, use conservative reach planning. Keep pick and place targets comfortably inside the arm's nominal reach rather than at the far edge of the workspace.
+
 ### Sites, Markers, And Visual Helpers
 
 - Use `site` for grasp centers, target points, fingertip references, debug markers, and visual annotations. Do not use a physical `geom` sphere as a marker on top of a block.
+- For scene-presentation screenshots, do not leave grasp, drop, or target sites visibly rendered as obvious balls on top of task objects. Keep reference sites tiny, transparent, in a non-primary group, or omit them when they are not needed for the user's requested task.
 - If a helper marker must be a `geom`, it must be visual-only with `contype="0"` and `conaffinity="0"`, and it should be named clearly as a visual marker.
 - Do not attach small collision-enabled spheres to task objects unless they are physically part of the object requested by the user.
 
@@ -226,12 +237,26 @@ When the task is "open the scene and take a look":
 - If the user provides an explicit path, use that path directly.
 - If the user provides only a file name, search the current workspace first, then fall back to `~/Documents/mujoco`.
 - If the user provides no path, open the most recently modified XML by default.
+- When taking a screenshot for visual inspection, make the MuJoCo viewer window near-fullscreen before capturing so the robot, task objects, and workspace are all visible. If the first screenshot is cropped, zoom out, adjust the scene `statistic` extent/center or camera, and capture again.
+- Prefer interface-based offscreen renders over operating-system screenshots when checking full scene layout. Render at least top, front, back, left, and right views; include bottom view when checking support and underside placement:
+
+```bash
+python scripts/mujoco_render_views.py /absolute/path/to/scene.xml --key ready --out-dir /tmp/mujoco-views
+```
 
 To keep later control commands attached to the same viewer process, do not open the scene directly with `Applications/MuJoCo.app`. Prefer starting `mujoco.viewer` through the skill's bundled script:
 
 ```bash
 python scripts/mujoco_viewer.py /absolute/path/to/scene.xml
 ```
+
+If the scene uses a keyframe for the intended presentation or ready pose, load it explicitly when opening the viewer:
+
+```bash
+python scripts/mujoco_viewer.py /absolute/path/to/scene.xml --key ready
+```
+
+Do not assume a `<keyframe>` entry is the initial viewer state. MuJoCo starts from `qpos0` unless the viewer or script loads the keyframe, so a robot can appear folded, collapsed, or away from the task even though a good keyframe exists.
 
 Do not use:
 

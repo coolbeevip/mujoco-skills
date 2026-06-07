@@ -24,6 +24,16 @@ MARKER_NAME_TOKENS = (
     "center",
 )
 
+VISIBLE_REFERENCE_SITE_TOKENS = (
+    "marker",
+    "target",
+    "grasp",
+    "debug",
+    "waypoint",
+    "drop",
+    "center",
+)
+
 FIXED_ARM_TOKENS = (
     "arm",
     "panda",
@@ -111,6 +121,18 @@ def parse_args() -> argparse.Namespace:
         help="Sphere radius under which collision geoms are checked as possible markers.",
     )
     parser.add_argument(
+        "--visible-site-radius",
+        type=float,
+        default=0.008,
+        help="Named reference site radius above which visible sites are warned about.",
+    )
+    parser.add_argument(
+        "--visible-site-alpha",
+        type=float,
+        default=0.35,
+        help="Named reference site alpha above which visible sites are warned about.",
+    )
+    parser.add_argument(
         "--warn-only",
         action="store_true",
         help="Print errors but exit with status 0.",
@@ -140,12 +162,21 @@ def body_name(mujoco: object, model: object, body_id: int) -> str:
     return object_name(mujoco, model, mujoco.mjtObj.mjOBJ_BODY, body_id)
 
 
+def body_id_by_name(mujoco: object, model: object, name: str) -> int | None:
+    body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+    return body_id if body_id >= 0 else None
+
+
 def geom_name(mujoco: object, model: object, geom_id: int) -> str:
     return object_name(mujoco, model, mujoco.mjtObj.mjOBJ_GEOM, geom_id)
 
 
 def joint_name(mujoco: object, model: object, joint_id: int) -> str:
     return object_name(mujoco, model, mujoco.mjtObj.mjOBJ_JOINT, joint_id)
+
+
+def site_name(mujoco: object, model: object, site_id: int) -> str:
+    return object_name(mujoco, model, mujoco.mjtObj.mjOBJ_SITE, site_id)
 
 
 def body_joint_ids(model: object, body_id: int) -> range:
@@ -365,6 +396,104 @@ def check_possible_marker_geoms(
     return issues
 
 
+def check_visible_reference_sites(
+    mujoco: object,
+    model: object,
+    site_radius: float,
+    site_alpha: float,
+) -> list[Issue]:
+    issues = []
+    for site_id in range(model.nsite):
+        name = site_name(mujoco, model, site_id)
+        blob = name.lower()
+        if not contains_any(blob, VISIBLE_REFERENCE_SITE_TOKENS):
+            continue
+        radius = float(np.max(model.site_size[site_id]))
+        alpha = float(model.site_rgba[site_id][3])
+        if radius <= site_radius or alpha <= site_alpha:
+            continue
+        issues.append(
+            Issue(
+                severity="warning",
+                code="VISIBLE_REFERENCE_SITE",
+                message=(
+                    f"Reference site {name} has size {radius:.3f} m and alpha "
+                    f"{alpha:.2f}. In viewer screenshots this can look like a "
+                    f"physical ball; make it tiny/transparent or omit it if it "
+                    f"is not needed for the requested task."
+                ),
+            )
+        )
+    return issues
+
+
+def named_body_ids_containing(mujoco: object, model: object, token: str) -> list[int]:
+    matches = []
+    needle = token.lower()
+    for body_id in range(1, model.nbody):
+        if needle in body_name(mujoco, model, body_id).lower():
+            matches.append(body_id)
+    return matches
+
+
+def check_sorting_workcell_layout(
+    mujoco: object,
+    model: object,
+    data: object,
+) -> list[Issue]:
+    conveyor_id = body_id_by_name(mujoco, model, "conveyor")
+    base_id = body_id_by_name(mujoco, model, "base")
+    bin_ids = named_body_ids_containing(mujoco, model, "bin")
+    object_ids = [
+        body_id
+        for body_id in named_body_ids_containing(mujoco, model, "cube")
+        if "geom" not in body_name(mujoco, model, body_id).lower()
+    ]
+
+    if conveyor_id is None or base_id is None or len(bin_ids) < 2 or len(object_ids) < 2:
+        return []
+
+    mujoco.mj_forward(model, data)
+    conveyor_xy = np.array(data.xpos[conveyor_id][:2], dtype=float)
+    base_xy = np.array(data.xpos[base_id][:2], dtype=float)
+    base_center_offset = abs(float(base_xy[0] - conveyor_xy[0]))
+
+    issues = []
+    if base_center_offset > 0.25:
+        issues.append(
+            Issue(
+                severity="error",
+                code="SORTING_BASE_OFF_CENTER",
+                message=(
+                    f"Robot base {body_name(mujoco, model, base_id)} is "
+                    f"{base_center_offset:.3f} m from the conveyor centerline in x. "
+                    f"For conveyor sorting scenes, place the fixed arm near the "
+                    f"active belt midline."
+                ),
+            )
+        )
+
+    for body_id in bin_ids + object_ids:
+        body = body_name(mujoco, model, body_id)
+        xy = np.array(data.xpos[body_id][:2], dtype=float)
+        distance = float(np.linalg.norm(xy - base_xy))
+        limit = 0.90 if "bin" in body.lower() else 0.80
+        if distance <= limit:
+            continue
+        issues.append(
+            Issue(
+                severity="error",
+                code="SORTING_TARGET_TOO_FAR",
+                message=(
+                    f"Sorting target body {body} is {distance:.3f} m from the "
+                    f"robot base. Keep cubes and bins comfortably inside the "
+                    f"UR5e work area instead of at the far edge of reach."
+                ),
+            )
+        )
+    return issues
+
+
 def check_free_robot_roots(mujoco: object, model: object) -> list[Issue]:
     issues = []
     for body_id in free_body_ids(mujoco, model):
@@ -438,7 +567,16 @@ def main() -> int:
             )
         )
         issues.extend(check_possible_marker_geoms(mujoco, model, args.marker_radius))
+        issues.extend(
+            check_visible_reference_sites(
+                mujoco,
+                model,
+                site_radius=args.visible_site_radius,
+                site_alpha=args.visible_site_alpha,
+            )
+        )
         issues.extend(check_free_robot_roots(mujoco, model))
+        issues.extend(check_sorting_workcell_layout(mujoco, model, data))
 
         initial = capture_free_body_snapshots(mujoco, model, data)
         run_passive_steps(mujoco, model, data, args.steps)

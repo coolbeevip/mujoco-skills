@@ -41,5 +41,6 @@ If a task includes both parts, use this fixed order:
 - Viewer service entry point: `scripts/mujoco_viewer.py`
 - Control and query entry point: `scripts/mujoco_cli.py`
 - Scene physical sanity checker: `scripts/mujoco_scene_check.py`
+- Offscreen multi-view renderer: `scripts/mujoco_render_views.py`
 - Environment and path helpers: `scripts/env_bootstrap.py`, `scripts/path_utils.py`
 - Do not preload the entire `scripts/` directory. Open a script only when you need to execute or modify it.

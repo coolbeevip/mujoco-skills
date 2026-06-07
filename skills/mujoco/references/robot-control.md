@@ -154,6 +154,12 @@ Do not send the scene directly to `Applications/MuJoCo.app`. By default, start t
 python scripts/mujoco_viewer.py /absolute/path/to/scene.xml
 ```
 
+If the scene defines a ready or presentation keyframe, load it explicitly:
+
+```bash
+python scripts/mujoco_viewer.py /absolute/path/to/scene.xml --key ready
+```
+
 Do not use:
 
 ```bash
