@@ -1,5 +1,7 @@
 # MuJoCo Skill
 
+[中文版本](README.zh-CN.md)
+
 A MuJoCo skill for AI Agent that helps AI agents handle MJCF scene construction, model checks, viewer startup, actuator inspection, and minimal control experiments more reliably.
 
 The examples and scene checks in this README were validated with Codex GPT-5.5.
