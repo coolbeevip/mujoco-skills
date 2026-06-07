@@ -48,6 +48,8 @@ Enter this in Codex:
 
 > Use $mujoco to create a humanoid robot balance-and-walk scene with a humanoid robot, a ground plane, low stepping blocks, and a marked walking target. Save it to ~/Documents/mujoco/humanoid_walk/scene.xml, then open the viewer to check it.
 
+![Unitree H1 humanoid walk scene](images/scene-unitree-h1.png)
+
 ## License
 
 MIT License. See [LICENSE](LICENSE).

@@ -119,6 +119,25 @@ For robot sorting scenes with a conveyor, colored blocks, and bins:
 - From the top view, the robot base, the belt center, the two blocks, and the two bins should form one coherent workcell. If this relationship is not obvious, adjust the layout before handoff.
 - For fixed arms such as UR5e, use conservative reach planning. Keep pick and place targets comfortably inside the arm's nominal reach rather than at the far edge of the workspace.
 
+### Humanoid Standing Scenes
+
+For humanoid, biped, balance, or walking scenes:
+
+- Do not assume a humanoid with a `freejoint` will stand passively. A compiled humanoid model can still collapse immediately without a standing pose and pose-holding control.
+- Provide a named standing or ready keyframe, usually `ready` or `stand`.
+- Align both feet with the ground at the initial pose. The pelvis/root height should be derived from the foot contacts, not guessed from the visual mesh.
+- If the model uses torque `motor` actuators and no controller is provided, do not expect it to hold a standing keyframe. Use suitable position actuators plus a real balance controller, or explicitly state that standing was not validated.
+- For preview-only humanoid scenes where the user asked for a plausible standing/walking layout but did not ask for a controller, add an explicit named balance aid such as `standing_balance_assist` rather than relying on hidden assumptions. A world weld on the humanoid root can keep the initial pose upright for visualization, but it is not a walking controller and must not be presented as dynamic balance.
+- When welding a humanoid root to world for preview, set the weld `relpose` to the negative of the intended root world pose, for example `relpose="0 0 -0.982 1 0 0 0"` for a root keyframe at `z=0.982`. Verify that the feet are visually aligned with the ground and the root is not pulled back to the asset's default height.
+- The keyframe `ctrl` must match the pose-holding actuator semantics. For position actuators, set `ctrl` to the corresponding joint targets, not all zeros.
+- Run the sanity checker with the same keyframe used for viewer presentation:
+
+```bash
+python scripts/mujoco_scene_check.py /absolute/path/to/scene.xml --key ready
+```
+
+Do not hand off a humanoid scene if the pelvis/root drops, drifts, or tilts during the initial stability check.
+
 ### Sites, Markers, And Visual Helpers
 
 - Use `site` for grasp centers, target points, fingertip references, debug markers, and visual annotations. Do not use a physical `geom` sphere as a marker on top of a block.

@@ -60,6 +60,38 @@ MOBILE_TOKENS = (
     "unitree",
 )
 
+HUMANOID_TOKENS = (
+    "humanoid",
+    "pelvis",
+    "torso",
+    "hip",
+    "knee",
+    "ankle",
+    "foot",
+    "shoulder",
+    "elbow",
+    "head",
+)
+
+HUMANOID_FOOT_TOKENS = (
+    "foot",
+    "feet",
+    "ankle",
+    "toe",
+    "sole",
+)
+
+SUPPORT_CONTACT_TOKENS = (
+    "floor",
+    "ground",
+    "plane",
+    "terrain",
+    "step",
+    "riser",
+    "platform",
+    "surface",
+)
+
 MANIPULATION_TOKENS = (
     "sort",
     "sorting",
@@ -443,12 +475,7 @@ def check_possible_marker_geoms(
         )
         marker_named = contains_any(blob, MARKER_NAME_TOKENS)
 
-        sibling_count = sum(
-            1
-            for sibling_id in range(model.ngeom)
-            if int(model.geom_bodyid[sibling_id]) == owning_body_id
-        )
-        if not marker_named and sibling_count <= 1:
+        if not marker_named:
             continue
 
         issues.append(
@@ -707,8 +734,120 @@ def check_sorting_workcell_layout(
     return issues
 
 
+def is_humanoid_model(mujoco: object, model: object) -> bool:
+    blob = model_name_blob(mujoco, model)
+    if "pelvis" in blob and "torso" in blob and "ankle" in blob:
+        return True
+    return contains_any(blob, HUMANOID_TOKENS) and (
+        "left_" in blob or "right_" in blob
+    )
+
+
+def humanoid_root_body_id(mujoco: object, model: object) -> int | None:
+    for name in ("pelvis", "torso", "root"):
+        body_id = body_id_by_name(mujoco, model, name)
+        if body_id is not None:
+            return body_id
+    if not is_humanoid_model(mujoco, model):
+        return None
+    free_ids = free_body_ids(mujoco, model)
+    return free_ids[0] if free_ids else None
+
+
+def geom_body_name_blob(mujoco: object, model: object, geom_id: int) -> str:
+    body_id = int(model.geom_bodyid[geom_id])
+    return name_blob(
+        geom_name(mujoco, model, geom_id),
+        body_name(mujoco, model, body_id),
+    )
+
+
+def humanoid_has_support_contact(
+    mujoco: object,
+    model: object,
+    data: object,
+    root_id: int,
+) -> bool:
+    humanoid_body_ids = set(descendant_body_ids(model, root_id))
+    humanoid_body_ids.add(root_id)
+
+    for contact_id in range(data.ncon):
+        contact = data.contact[contact_id]
+        geom1 = int(contact.geom1)
+        geom2 = int(contact.geom2)
+        body1 = int(model.geom_bodyid[geom1])
+        body2 = int(model.geom_bodyid[geom2])
+        geom1_is_humanoid = body1 in humanoid_body_ids
+        geom2_is_humanoid = body2 in humanoid_body_ids
+        if geom1_is_humanoid == geom2_is_humanoid:
+            continue
+
+        humanoid_geom = geom1 if geom1_is_humanoid else geom2
+        support_geom = geom2 if geom1_is_humanoid else geom1
+        humanoid_blob = geom_body_name_blob(mujoco, model, humanoid_geom)
+        support_blob = geom_body_name_blob(mujoco, model, support_geom)
+
+        if not contains_any(humanoid_blob, HUMANOID_FOOT_TOKENS):
+            continue
+        if body1 == 0 or body2 == 0 or contains_any(support_blob, SUPPORT_CONTACT_TOKENS):
+            return True
+
+    return False
+
+
+def check_humanoid_standing_stability(
+    mujoco: object,
+    model: object,
+    data: object,
+    initial: dict[int, FreeBodySnapshot],
+) -> list[Issue]:
+    root_id = humanoid_root_body_id(mujoco, model)
+    if root_id is None:
+        return []
+
+    root_name = body_name(mujoco, model, root_id)
+    root_z = float(data.xpos[root_id][2])
+    initial_snapshot = initial.get(root_id)
+    if initial_snapshot is None:
+        return []
+
+    z_drop = float(initial_snapshot.xpos[2] - data.xpos[root_id][2])
+    xy_drift = float(np.linalg.norm(data.xpos[root_id][:2] - initial_snapshot.xpos[:2]))
+    tilt_delta = quat_angle_degrees(initial_snapshot.xquat, np.array(data.xquat[root_id]))
+
+    messages = []
+    if root_z < 0.65:
+        messages.append(f"{root_name} final z is only {root_z:.3f} m")
+    if z_drop > 0.08:
+        messages.append(f"{root_name} dropped {z_drop:.3f} m")
+    if xy_drift > 0.12:
+        messages.append(f"{root_name} drifted {xy_drift:.3f} m horizontally")
+    if tilt_delta > 18.0:
+        messages.append(f"{root_name} tilted {tilt_delta:.1f} deg")
+    if not humanoid_has_support_contact(mujoco, model, data, root_id):
+        messages.append("no foot/ankle contact with floor or support geometry was found")
+    if not messages:
+        return []
+
+    return [
+        Issue(
+            severity="error",
+            code="HUMANOID_NOT_STANDING",
+            message=(
+                "Humanoid failed the standing stability check after passive "
+                "simulation: "
+                + ", ".join(messages)
+                + ". Use a true standing keyframe, align the feet on the floor, "
+                + "and provide pose-holding actuators or another balance strategy."
+            ),
+        )
+    ]
+
+
 def check_free_robot_roots(mujoco: object, model: object) -> list[Issue]:
     issues = []
+    if is_humanoid_model(mujoco, model):
+        return issues
     for body_id in free_body_ids(mujoco, model):
         body = body_name(mujoco, model, body_id)
         joint_names = ", ".join(free_body_joint_names(mujoco, model, body_id))
@@ -810,6 +949,7 @@ def main() -> int:
                 tilt_threshold_deg=args.tilt_threshold_deg,
             )
         )
+        issues.extend(check_humanoid_standing_stability(mujoco, model, data, initial))
 
         print_report(scene_path, model, args.steps, issues)
         has_errors = any(issue.severity == "error" for issue in issues)
