@@ -1,19 +1,19 @@
 # MuJoCo Robot Control
 
-只在任务涉及运行、检查、viewer、actuator、抓夹动作或最小控制实验时读取本文件。
+Read this file only when the task involves runtime execution, inspection, viewer use, actuators, gripper actions, or minimal control experiments.
 
-## 统一入口
+## Unified Entry Points
 
-优先使用这两个脚本的组合：
+Prefer the combination of these two scripts:
 
 - `scripts/mujoco_viewer.py`
 - `scripts/mujoco_cli.py`
 
-补充辅助脚本：
+Supplementary helper:
 
 - `scripts/env_bootstrap.py`
 
-当用户只是要求列出所有场景时，不要走控制流程。直接读取 `~/Documents/mujoco` 的一级目录名，或调用：
+When the user only asks to list all scenes, do not enter the control workflow. Read first-level directory names under `~/Documents/mujoco`, or call:
 
 ```bash
 python - <<'PY'
@@ -22,81 +22,81 @@ print("\n".join(list_scene_groups()))
 PY
 ```
 
-## 默认工作流
+## Default Workflow
 
-控制任务按这个顺序推进：
+Proceed through control tasks in this order:
 
 1. `bootstrap`
-2. 启动 `mujoco_viewer.py`
-3. 用 `mujoco_cli.py` 查询 actuator / 当前 ctrl
-4. 用 `mujoco_cli.py` 下发控制
+2. Start `mujoco_viewer.py`
+3. Use `mujoco_cli.py` to query actuators and current ctrl
+4. Use `mujoco_cli.py` to send control commands
 
-不要跳过前两步，直接进入复杂控制。
+Do not skip the first two steps and jump straight into complex control.
 
-## 环境检查优先
+## Check The Environment First
 
-在执行 viewer 或控制命令之前，先确认：
+Before running viewer or control commands, confirm:
 
-- 有可用的 Python 3
-- 能导入 `mujoco` Python 包
+- Python 3 is available
+- the `mujoco` Python package can be imported
 
-默认行为不是“等报错再处理”，而是：
+The default behavior is not "wait for an error and react". Instead:
 
-1. 先做环境检查
-2. 缺库就自动安装
-3. 安装完成后再继续执行控制任务
+1. Check the environment first.
+2. Automatically install missing packages.
+3. Continue the control task after installation.
 
-显式检查可直接调用：
+Explicit checks can call:
 
 ```bash
 python scripts/env_bootstrap.py
 ```
 
-如果缺少 `mujoco`，应自动安装并继续，不要把 `ModuleNotFoundError: No module named 'mujoco'` 直接暴露给用户作为第一反馈。
+If `mujoco` is missing, install it automatically and continue. Do not expose `ModuleNotFoundError: No module named 'mujoco'` to the user as the first response.
 
-## 动作请求默认视为执行请求
+## Treat Action Requests As Execution Requests
 
-当用户说这些话时，不要停在解释层：
+When the user says any of the following, do not stop at an explanation:
 
-- 打开抓夹
-- 闭合夹爪
-- 抬一下肩膀
-- 弯一下手肘
-- 把机械臂回零
-- 让某个 actuator 到某个值
+- open the gripper
+- close the gripper
+- lift the shoulder a little
+- bend the elbow
+- return the robot arm to zero
+- set an actuator to a specific value
 
-默认动作：
+Default action:
 
-1. 先启动或连接到 `mujoco_viewer.py`
-2. 通过 `mujoco_cli.py actuators` / `info` 获取最小必要结构信息
-3. 信息足够后默认接到可视化 viewer 执行 `set` + `step`
-4. 执行后再汇报结果
+1. Start or connect to `mujoco_viewer.py`.
+2. Use `mujoco_cli.py actuators` / `info` to gather the minimum required structure information.
+3. Once enough information is available, connect to the visual viewer and execute `set` + `step` by default.
+4. Report the result after execution.
 
-## actuator 优先，不按 joint 猜
+## Prefer Actuators; Do Not Guess From Joints
 
-对用户来说，“让机械臂动起来”是动作请求；对 MuJoCo 来说，通常是对 actuator 发控制值。
+For users, "make the robot arm move" is an action request. In MuJoCo, it is usually a request to write actuator control values.
 
-默认规则：
+Default rules:
 
-- 按 actuator 名控制，不按 joint 名臆测
-- 从小幅度开始，不要一上来打满
-- 先单轴，再多轴
-- 先短时，再长时
+- Control by actuator name, not by guessed joint name.
+- Start with small values; do not max out controls immediately.
+- Test one axis before multiple axes.
+- Test short durations before long durations.
 
-## viewer 去重
+## Viewer Reuse
 
-机器人操作默认应接到可视化 viewer，不要默认走离线 headless。
+Robot operations should connect to the visual viewer by default. Do not default to offline headless execution.
 
-- `mujoco_viewer.py` 启动的 viewer 应由 Python 脚本通过 `mujoco.viewer` 持有，而不是把场景直接丢给 `MuJoCo.app`
-- `mujoco_cli.py` 应通过 `CLI -> socket -> 运行中的 viewer 进程 -> data.ctrl` 下发控制
-- 只有用户明确要求无窗口、批处理、离线执行时，才用单独的离线脚本或一次性 Python 片段
-- 不要因为多次控制请求反复开新窗口
+- The viewer started by `mujoco_viewer.py` should be held by the Python script through `mujoco.viewer`, not by dropping the scene directly into `MuJoCo.app`.
+- `mujoco_cli.py` should send commands through `CLI -> socket -> running viewer process -> data.ctrl`.
+- Use a separate offline script or one-off Python snippet only when the user explicitly asks for no-window, batch, or offline execution.
+- Do not open a new window repeatedly for repeated control requests.
 
-- 在启动 viewer 前，先检查是否已有对应 scene 的 viewer socket
-- 如果已有，就直接复用，不再开新窗口
-- 结果里说明当前 viewer 已复用
+- Before starting a viewer, check whether a viewer socket for the same scene already exists.
+- If it exists, reuse it directly instead of opening a new window.
+- State in the result that the current viewer was reused.
 
-## 常用命令
+## Common Commands
 
 ```bash
 python scripts/mujoco_viewer.py ~/Documents/mujoco/so101/scene.xml
@@ -108,60 +108,60 @@ python scripts/mujoco_cli.py --scene ~/Documents/mujoco/so101/scene.xml set-batc
 python scripts/mujoco_cli.py --scene ~/Documents/mujoco/so101/scene.xml step 120
 ```
 
-检查时重点看：
+During inspection, focus on:
 
-- actuator 是否存在
-- `ctrlrange` 是否合理
-- joint 拓扑是否符合预期
-- 末端 `site` 是否定义好
+- whether actuators exist
+- whether `ctrlrange` is reasonable
+- whether joint topology matches expectations
+- whether the end-effector `site` is defined
 
-## 简单动作序列
+## Simple Action Sequences
 
-如果目标只是执行简单动作，不要每次现写一段大 Python。优先流程是：
+If the goal is only a simple action, do not write a large new Python script each time. Prefer this flow:
 
-1. 用 `mujoco_cli.py actuators` 和 `info` 读取最小结构信息
-2. 生成一串 `set` + `step` 命令
-3. 在运行中的 viewer 上执行
+1. Use `mujoco_cli.py actuators` and `info` to read the minimum structure information.
+2. Generate a sequence of `set` + `step` commands.
+3. Execute those commands on the running viewer.
 
-如果需要让多关节或多机械臂“同时起跳”，优先把同一时刻的控制量合并成一次 `set-batch`，不要连续发多个 `set`。
+If multiple joints or multiple robot arms need to move "at the same time", merge same-timestep control values into one `set-batch`. Do not send several consecutive `set` commands.
 
-## 抓夹语义
+## Gripper Semantics
 
-### 打开抓夹
+### Open The Gripper
 
-默认顺序：
+Default order:
 
-1. 优先找名字接近 `gripper`、`grip`、`finger` 的 actuator
-2. 如果开合方向已知，直接打到张开端
-3. 如果方向未知，先看 `ctrlrange`
-4. 默认把“打开抓夹”解释为较大一端；若命名或历史结果显示相反，再修正
+1. Prefer an actuator whose name is close to `gripper`, `grip`, or `finger`.
+2. If the open/close direction is known, set the actuator directly to the open end.
+3. If the direction is unknown, inspect `ctrlrange` first.
+4. By default, interpret "open the gripper" as the larger end of the range; correct this if naming or previous results show the opposite.
 
-### 闭合抓夹
+### Close The Gripper
 
-默认顺序：
+Default order:
 
-1. 定位抓夹 actuator
-2. 把控制值打到与张开相反的一端
-3. 执行后汇报实际控制值与结果
+1. Locate the gripper actuator.
+2. Set its control value to the end opposite the open value.
+3. Report the actual control value and result after execution.
 
-不要只把 actuator 名称抛给用户，让用户自己试。
+Do not merely hand the actuator name to the user and make them try it themselves.
 
-## 运行场景
+## Running Scenes
 
-不要把场景直接交给 `Applications/MuJoCo.app`。默认应启动 skill 的 Python 脚本，由它内部调用 `mujoco.viewer`：
+Do not send the scene directly to `Applications/MuJoCo.app`. By default, start the skill's Python script and let it call `mujoco.viewer` internally:
 
 ```bash
 python scripts/mujoco_viewer.py /absolute/path/to/scene.xml
 ```
 
-不要用：
+Do not use:
 
 ```bash
 /Applications/MuJoCo.app/Contents/MacOS/simulate /absolute/path/to/scene.xml
 ```
 
-## 交付要求
+## Handoff Requirements
 
-- 明确模型路径
-- 明确执行的是 `inspect`、`run` 还是 `control`
-- 如果只做了结构检查、还没真正驱动 actuator，要直说
+- State the model path.
+- State whether the operation was `inspect`, `run`, or `control`.
+- If only structure inspection was performed and actuators were not actually driven, say so explicitly.

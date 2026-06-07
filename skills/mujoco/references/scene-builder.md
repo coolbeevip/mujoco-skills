@@ -1,42 +1,42 @@
 # MuJoCo Scene Builder
 
-只在任务涉及建模、改模、场景搭建或场景可视化检查时读取本文件。
+Read this file only when the task involves modeling, model edits, scene construction, or scene visualization checks.
 
-## 负责什么
+## Responsibilities
 
-- 新建或修改 `MJCF` / `XML`
-- 调整 `body` / `joint` / `geom` / `site` / `sensor` / `contact` / `equality` / `inertial`
-- 为现有机器人补 `scene.xml`、桌面、障碍物、相机、灯光、抓取物
-- 修复编译失败、层级错误、惯性异常、接触穿透、姿态错乱
-- 直接打开指定场景做可视化检查
+- Create or modify `MJCF` / `XML`
+- Adjust `body` / `joint` / `geom` / `site` / `sensor` / `contact` / `equality` / `inertial`
+- Add `scene.xml`, tables, obstacles, cameras, lights, and graspable objects for an existing robot
+- Fix compile failures, hierarchy mistakes, inertial problems, contact penetration, and pose errors
+- Open a specified scene directly for visual inspection
 
-不负责：
+Not responsible for:
 
-- actuator 控制
-- 最小控制实验
-- 抓夹开合这类运行时动作
+- actuator control
+- minimal control experiments
+- runtime actions such as opening or closing a gripper
 
-这些任务交给 `MuJoCo Robot Control`。
+Delegate those tasks to `MuJoCo Robot Control`.
 
-## 默认工作流
+## Default Workflow
 
-1. 明确系统边界：这次是改机器人本体，还是只改顶层场景。
-2. 能复用就复用：已有真实机器人时，优先沿用上游或官方模型，不要先手搓替身。
-3. 先做最小可编译版本，再补细节。
-4. 落盘到 `~/Documents/mujoco`，文件名稳定可读。
-5. 做 XML / 编译 / viewer 检查，再向用户汇报。
+1. Define the system boundary: are you editing the robot body itself, or only the top-level scene?
+2. Reuse before rebuilding: when a real robot model exists, prefer upstream or official models before creating a placeholder from scratch.
+3. Build the smallest compilable version first, then add details.
+4. Save under `~/Documents/mujoco` with stable, readable file names.
+5. Run XML, compile, and viewer checks before reporting back.
 
-如果任务包含抓取、抓放、放入盒子、堆叠、拾取这类 manipulation 语义，不要把“模型能编译”和“机械臂能动”误判为“任务可执行”。对这类任务，末端执行器必须额外通过抓取链路检查。
+If the task has manipulation semantics such as grasping, pick-and-place, placing an object into a box, stacking, or picking, do not mistake "the model compiles" or "the robot moves" for "the task is executable". For these tasks, the end effector must also pass a grasp-chain check.
 
-## 场景列表
+## Scene Listing
 
-当用户要求列出所有场景时：
+When the user asks to list all scenes:
 
-- 默认只读取 `~/Documents/mujoco`
-- 只把该目录下的一级目录名当作场景名称
-- 不递归列出 `scene.xml`、`assets`、`meshes` 或更深层文件
+- Read only `~/Documents/mujoco` by default.
+- Treat only first-level directories under that path as scene names.
+- Do not recursively list `scene.xml`, `assets`, `meshes`, or deeper files.
 
-如果需要脚本化列出，优先使用：
+If a scripted listing is needed, prefer:
 
 ```bash
 python - <<'PY'
@@ -45,149 +45,149 @@ print("\n".join(list_scene_groups()))
 PY
 ```
 
-## 复用优先级
+## Reuse Priority
 
-对真实机器人，默认顺序是：
+For real robots, use this default priority order:
 
-1. MuJoCo 官方 `Model Gallery`
+1. MuJoCo official `Model Gallery`
 2. `MuJoCo Menagerie`
-3. 当前仓库已有相似模型
-4. 最后才是从零建模
+3. Similar models already present in the current repository
+4. From-scratch modeling only as the last resort
 
-如果用户真正要的是“把某机器人放进一个操作场景里”，优先保留机器人本体不动，只改顶层 `scene.xml`。
+If the user actually wants to "put this robot into an operation scene", keep the robot body unchanged and modify only the top-level `scene.xml`.
 
-典型最小侵入修改：
+Typical minimal edits:
 
-- 调整 base 的摆放高度或朝向
-- 添加桌面、盒子、木块、地面、障碍物
-- 增加 `camera`、`light`、`site`、`keyframe`
+- Adjust the base placement height or orientation
+- Add a table, box, block, floor, or obstacle
+- Add `camera`, `light`, `site`, or `keyframe`
 
-不要把“加几个场景物体”升级成“重写机器人本体”。
+Do not escalate "add a few scene objects" into "rewrite the robot body".
 
-## 建模铁律
+## Modeling Rules
 
-- 一切先看 body 树，别把独立刚体和附属几何混为一谈。
-- 优先用局部坐标理解 `body pos`、`joint pos`、`geom pos`、`site pos`。
-- 先追求可编译，再考虑 `default class`、抽象复用、include 拆分。
-- 惯性和质量不能糊弄；抖动、翻转、力矩离谱时先怀疑惯性。
-- 接触问题同时检查 `contype` / `conaffinity` / `solref` / `solimp` / `friction` / 初始穿插。
-- 只使用确认存在的属性名；不确定时查官方文档或当前仓库样例。
+- Inspect the body tree first; do not confuse independent rigid bodies with attached geometry.
+- Prefer local coordinates when interpreting `body pos`, `joint pos`, `geom pos`, and `site pos`.
+- Aim for compilability first; consider `default class`, abstraction reuse, and `include` splitting after that.
+- Do not fake inertia or mass. If the model jitters, flips, or produces unrealistic torques, inspect inertia first.
+- For contact issues, check `contype` / `conaffinity` / `solref` / `solimp` / `friction` / initial interpenetration together.
+- Use only attribute names known to exist. If unsure, check official docs or current repository examples.
 
-## 场景视觉默认值
+## Scene Visual Defaults
 
-- 默认不要交付高亮、近白的 `skybox`、`haze`、地面棋盘或强头灯组合。
-- 除非用户明确要求“明亮展台风格”，背景优先用低饱和、偏暗的蓝灰或中性灰。
-- `visual/rgba haze` 不要轻易设到接近 `1 1 1 1`；`texture type="skybox"` 的渐变顶色也不要接近纯白。
-- 地面和背景应服务于看清机器人与物体，而不是让大面积高亮背景喧宾夺主、造成刺眼或发白。
+- By default, do not deliver high-brightness or near-white `skybox`, `haze`, checkerboard floor, or strong headlight combinations.
+- Unless the user explicitly asks for a bright showroom style, prefer a low-saturation, darker blue-gray or neutral-gray background.
+- Do not casually set `visual/rgba haze` close to `1 1 1 1`; do not make the top color of `texture type="skybox"` nearly pure white.
+- The floor and background should help make the robot and objects legible, not dominate the scene with large bright areas that look washed out or glaring.
 
-## 抓手建模硬约束
+## Hard Constraints For Gripper Modeling
 
-当用户要的是抓取、夹取、抓放时，默认按下面的约束检查或建模。少一条都可能出现“机械臂会动，但块抓不起来”。
+When the user wants grasping, gripping, or pick-and-place, check or model against the constraints below by default. Missing even one can produce a robot that moves but cannot lift the block.
 
-### 1. 不能只看 actuator，要看完整抓取链路
+### 1. Do Not Check Only The Actuator; Check The Full Grasp Chain
 
-必须同时具备：
+The model must include all of the following:
 
-- 合理的末端 frame 或 grasp site
-- 至少两个能形成夹持约束的接触面
-- 可解释的开合语义
-- 夹爪和待抓物之间真实发生接触的碰撞几何
+- A reasonable end-effector frame or grasp site
+- At least two contact surfaces that can form a gripping constraint
+- Explainable open/close semantics
+- Collision geometry where the gripper and target object actually contact each other
 
-不要把“有一个 `gripper` actuator”误判成“抓手可用”。
+Do not mistake "there is a `gripper` actuator" for "the gripper is usable".
 
-### 2. 不要交付单侧运动、无对侧接触面的假抓手
+### 2. Do Not Deliver A Fake Gripper With One-Sided Motion And No Opposing Contact Surface
 
-如果模型只有一个 moving jaw，而另一侧没有固定夹持面或对向 jaw，默认认为它不具备稳定夹取能力。
+If a model has only one moving jaw and no fixed opposing contact surface or opposite jaw, treat it as not capable of stable gripping by default.
 
-对夹爪类末端，至少满足以下之一：
+For gripper-like end effectors, require at least one of the following:
 
-- 两个对向 jaw，且开合由 joint / equality / tendon 保持几何一致
-- 一个 moving jaw + 一个明确的固定 jaw / palm 接触面，并验证确实能把物体夹在中间
+- Two opposing jaws, with their opening/closing geometry kept consistent by a joint, equality constraint, or tendon
+- One moving jaw plus a clear fixed jaw or palm contact surface, and verification that an object can actually be held between them
 
-### 3. 视觉 mesh 不能直接当抓取碰撞基准
+### 3. Do Not Use Visual Meshes As The Grasp Collision Basis
 
-对 gripper / fingertip：
+For grippers and fingertips:
 
-- 可以保留 mesh 作为 visual
-- 抓取接触优先补简单 primitive collision geom，例如 `box`、`capsule`
-- 指尖接触面要明确、稳定、可推理，不要完全依赖复杂 STL 网格
+- Keep meshes as visuals when useful.
+- Prefer simple primitive collision geoms for grasp contact, such as `box` or `capsule`.
+- Make fingertip contact surfaces explicit, stable, and easy to reason about. Do not depend entirely on complex STL meshes.
 
-### 4. 必须定义抓取参考位
+### 4. Define A Grasp Reference
 
-至少提供以下 site 中的一种：
+Provide at least one of the following sites:
 
 - `gripperframe`
 - `grasp_center`
-- 左右指尖 site
+- left and right fingertip sites
 
-如果任务会用到抓取规划，优先同时提供：
+If grasp planning is part of the task, prefer providing both:
 
-- 一个中心抓取 site
-- 两个指尖 site
+- one central grasp site
+- two fingertip sites
 
-### 5. 必须给出开合语义
+### 5. Define Open/Close Semantics
 
-不要只给 joint range / ctrlrange。
+Do not provide only a joint range or `ctrlrange`.
 
-必须能回答：
+The model must answer:
 
-- 哪一端是 open
-- 哪一端是 close
-- 闭合时夹爪之间理论剩余间距大概多少
+- Which end is open
+- Which end is closed
+- The approximate remaining gap between the fingers when closed
 
-如果上游模型没定义清楚，补注释、site、命名或 README 说明；不要把不清楚的抓手直接交付成“可抓取模型”。
+If the upstream model does not make this clear, add comments, sites, names, or README notes. Do not deliver an unclear gripper as a "graspable model".
 
-### 6. 抓取任务必须做最小抓取验证
+### 6. Grasping Tasks Require A Minimal Grasp Validation
 
-如果用户目标是抓放，不要只做这些验证：
+If the user's target is pick-and-place, do not validate only that:
 
-- XML 能编译
-- viewer 能打开
-- actuator 能驱动
+- XML compiles
+- the viewer opens
+- the actuator can be driven
 
-必须至少补一个最小抓取检查：
+Add at least one minimal grasp check:
 
-- 闭合时物体是否真正离开桌面
-- 抬起后物体 `z` 是否持续增加
-- 松手后物体是否从夹爪中脱离
+- whether the object actually leaves the table when the gripper closes
+- whether the object's `z` keeps increasing after lift
+- whether the object releases from the gripper after opening
 
-如果没做这一步，交付时必须明确写“运动链路已验证，但抓取链路未验证”。
+If this step was not performed, explicitly state in the handoff: "The motion chain was verified, but the grasp chain was not verified."
 
-## 抓放任务的默认分解
+## Default Breakdown For Pick-And-Place Tasks
 
-当用户要求“把方块放进盒子”时，不要把它当成单一动作。默认拆成：
+When the user asks to "put the block into the box", do not treat it as a single action. Split it by default into:
 
-1. 场景与目标物检查
-2. 末端执行器抓取能力检查
-3. 接近位 / 抓取位 / 抬起位 / 放置位定义
-4. 控制或规划执行
+1. Scene and target object check
+2. End-effector grasp capability check
+3. Approach pose / grasp pose / lift pose / place pose definition
+4. Control or planning execution
 
-如果第 2 步失败，应先修 gripper 模型，而不是继续堆动作脚本或 IK。
+If step 2 fails, fix the gripper model first instead of piling on action scripts or IK.
 
-## 打开场景
+## Opening Scenes
 
-当任务是“打开场景看看”时：
+When the task is "open the scene and take a look":
 
-- 如果用户给了明确路径，直接用明确路径。
-- 如果只给文件名，先在当前工作区找，再回退到 `~/Documents/mujoco`。
-- 如果用户没给路径，默认打开最近修改的 XML。
+- If the user provides an explicit path, use that path directly.
+- If the user provides only a file name, search the current workspace first, then fall back to `~/Documents/mujoco`.
+- If the user provides no path, open the most recently modified XML by default.
 
-为了让后续控制命令能够复用同一个 viewer 进程，不要把场景交给 `Applications/MuJoCo.app` 直接打开。优先通过 skill 自带脚本启动 `mujoco.viewer`：
+To keep later control commands attached to the same viewer process, do not open the scene directly with `Applications/MuJoCo.app`. Prefer starting `mujoco.viewer` through the skill's bundled script:
 
 ```bash
 python scripts/mujoco_viewer.py /absolute/path/to/scene.xml
 ```
 
-不要用：
+Do not use:
 
 ```bash
 /Applications/MuJoCo.app/Contents/MacOS/simulate /absolute/path/to/scene.xml
 ```
 
-因为那样启动的窗口不受当前 skill 的脚本进程管理，后续也无法稳定挂接 `CLI -> socket -> viewer 进程 -> data.ctrl` 这条控制链路。
+That window is not managed by the current skill's script process, and later commands cannot reliably attach to the `CLI -> socket -> viewer process -> data.ctrl` control chain.
 
-## 交付要求
+## Handoff Requirements
 
-- 明确写出最终文件路径
-- 说明是改了机器人本体还是只改了顶层场景
-- 如果只做了静态建模、还没做运行验证，要直说
+- State the final file path.
+- State whether you modified the robot body itself or only the top-level scene.
+- If only static modeling was performed and runtime validation was not performed, say so explicitly.
