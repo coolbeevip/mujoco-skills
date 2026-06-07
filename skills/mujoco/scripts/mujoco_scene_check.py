@@ -60,6 +60,37 @@ MOBILE_TOKENS = (
     "unitree",
 )
 
+MANIPULATION_TOKENS = (
+    "sort",
+    "sorting",
+    "pick",
+    "place",
+    "grasp",
+    "bin",
+    "cube",
+    "block",
+)
+
+END_EFFECTOR_TOKENS = (
+    "gripper",
+    "finger",
+    "claw",
+    "hand",
+    "eef",
+    "end_effector",
+    "tcp",
+    "tool",
+)
+
+WORK_SURFACE_TOKENS = (
+    "belt",
+    "conveyor",
+    "table",
+    "surface",
+    "platform",
+    "tray",
+)
+
 
 @dataclass(frozen=True)
 class Issue:
@@ -137,6 +168,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print errors but exit with status 0.",
     )
+    parser.add_argument(
+        "--key",
+        help=(
+            "Optional keyframe name, id, or 'first' to load before checks. "
+            "Use this for ready/presentation poses."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -167,6 +205,17 @@ def body_id_by_name(mujoco: object, model: object, name: str) -> int | None:
     return body_id if body_id >= 0 else None
 
 
+def model_name_blob(mujoco: object, model: object) -> str:
+    names = []
+    for body_id in range(1, model.nbody):
+        names.append(body_name(mujoco, model, body_id))
+    for geom_id in range(model.ngeom):
+        names.append(geom_name(mujoco, model, geom_id))
+    for site_id in range(model.nsite):
+        names.append(site_name(mujoco, model, site_id))
+    return name_blob(*names)
+
+
 def geom_name(mujoco: object, model: object, geom_id: int) -> str:
     return object_name(mujoco, model, mujoco.mjtObj.mjOBJ_GEOM, geom_id)
 
@@ -177,6 +226,28 @@ def joint_name(mujoco: object, model: object, joint_id: int) -> str:
 
 def site_name(mujoco: object, model: object, site_id: int) -> str:
     return object_name(mujoco, model, mujoco.mjtObj.mjOBJ_SITE, site_id)
+
+
+def resolve_keyframe_id(mujoco: object, model: object, selector: str | None) -> int | None:
+    if selector is None:
+        return None
+    if model.nkey < 1:
+        raise ValueError(f"Cannot load keyframe '{selector}': model has no keyframes.")
+
+    stripped = selector.strip()
+    if stripped == "first":
+        return 0
+    if stripped.lstrip("-").isdigit():
+        key_id = int(stripped)
+        if key_id < 0 or key_id >= model.nkey:
+            raise IndexError(f"keyframe id {key_id} out of range [0, {model.nkey})")
+        return key_id
+
+    for key_id in range(model.nkey):
+        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_KEY, key_id)
+        if name == stripped:
+            return key_id
+    raise KeyError(f"Unknown keyframe name: {selector}")
 
 
 def body_joint_ids(model: object, body_id: int) -> range:
@@ -427,6 +498,148 @@ def check_visible_reference_sites(
     return issues
 
 
+def geom_half_height(model: object, geom_id: int) -> float:
+    geom_type = int(model.geom_type[geom_id])
+    size = model.geom_size[geom_id]
+    try:
+        import mujoco
+    except Exception:
+        return float(np.max(size))
+
+    if geom_type == int(mujoco.mjtGeom.mjGEOM_PLANE):
+        return 0.0
+    if geom_type == int(mujoco.mjtGeom.mjGEOM_BOX):
+        return float(size[2])
+    if geom_type == int(mujoco.mjtGeom.mjGEOM_SPHERE):
+        return float(size[0])
+    if geom_type == int(mujoco.mjtGeom.mjGEOM_CYLINDER):
+        return float(size[1])
+    if geom_type == int(mujoco.mjtGeom.mjGEOM_CAPSULE):
+        return float(size[1] + size[0])
+    return float(np.max(size))
+
+
+def named_geom_ids_containing(mujoco: object, model: object, token: str) -> list[int]:
+    matches = []
+    needle = token.lower()
+    for geom_id in range(model.ngeom):
+        if needle in geom_name(mujoco, model, geom_id).lower():
+            matches.append(geom_id)
+    return matches
+
+
+def named_site_ids_containing(mujoco: object, model: object, token: str) -> list[int]:
+    matches = []
+    needle = token.lower()
+    for site_id in range(model.nsite):
+        if needle in site_name(mujoco, model, site_id).lower():
+            matches.append(site_id)
+    return matches
+
+
+def has_named_end_effector(mujoco: object, model: object) -> bool:
+    blob = model_name_blob(mujoco, model)
+    return contains_any(blob, END_EFFECTOR_TOKENS)
+
+
+def scene_has_manipulation_semantics(mujoco: object, model: object) -> bool:
+    return contains_any(model_name_blob(mujoco, model), MANIPULATION_TOKENS)
+
+
+def check_end_effector_presence_for_manipulation(
+    mujoco: object,
+    model: object,
+) -> list[Issue]:
+    if not scene_has_manipulation_semantics(mujoco, model):
+        return []
+    if has_named_end_effector(mujoco, model):
+        return []
+    return [
+        Issue(
+            severity="error",
+            code="MISSING_END_EFFECTOR_FOR_MANIPULATION",
+            message=(
+                "This scene appears to involve manipulation or sorting, but no "
+                "named gripper, finger, hand, TCP, or end-effector was found. "
+                "Many industrial-arm models do not include a gripper by default; "
+                "do not claim a grasping/sorting setup until the tool is chosen "
+                "or explicitly modeled."
+            ),
+        )
+    ]
+
+
+def work_surface_top_z(mujoco: object, model: object, data: object) -> float | None:
+    candidates = []
+    for token in WORK_SURFACE_TOKENS:
+        candidates.extend(named_geom_ids_containing(mujoco, model, token))
+    candidates = sorted(set(candidates))
+    if not candidates:
+        return None
+    tops = [
+        float(data.geom_xpos[geom_id][2]) + geom_half_height(model, geom_id)
+        for geom_id in candidates
+    ]
+    return max(tops)
+
+
+def check_end_effector_work_surface_clearance(
+    mujoco: object,
+    model: object,
+    data: object,
+    clearance: float = 0.02,
+) -> list[Issue]:
+    top_z = work_surface_top_z(mujoco, model, data)
+    if top_z is None:
+        return []
+
+    issues = []
+    min_allowed_z = top_z + clearance
+    tool_site_ids = []
+    tool_geom_ids = []
+    for token in END_EFFECTOR_TOKENS:
+        tool_site_ids.extend(named_site_ids_containing(mujoco, model, token))
+        tool_geom_ids.extend(named_geom_ids_containing(mujoco, model, token))
+    tool_site_ids = sorted(set(tool_site_ids))
+    tool_geom_ids = sorted(set(tool_geom_ids))
+
+    for site_id in tool_site_ids:
+        site_z = float(data.site_xpos[site_id][2])
+        if site_z >= min_allowed_z:
+            continue
+        issues.append(
+            Issue(
+                severity="error",
+                code="END_EFFECTOR_BELOW_WORK_SURFACE",
+                message=(
+                    f"End-effector reference site {site_name(mujoco, model, site_id)} "
+                    f"is at z={site_z:.3f} m, below the required clearance over "
+                    f"the work surface top z={top_z:.3f} m. The ready pose or "
+                    f"tool mounting is likely under or through the conveyor/table."
+                ),
+            )
+        )
+
+    for geom_id in tool_geom_ids:
+        geom_z = float(data.geom_xpos[geom_id][2])
+        half_height = geom_half_height(model, geom_id)
+        bottom_z = geom_z - half_height
+        if bottom_z >= top_z - 0.005:
+            continue
+        issues.append(
+            Issue(
+                severity="error",
+                code="END_EFFECTOR_GEOM_BELOW_WORK_SURFACE",
+                message=(
+                    f"End-effector geom {geom_name(mujoco, model, geom_id)} has "
+                    f"bottom z={bottom_z:.3f} m below work surface top z={top_z:.3f} m. "
+                    f"Check the tool orientation, tool length, and ready pose."
+                ),
+            )
+        )
+    return issues
+
+
 def named_body_ids_containing(mujoco: object, model: object, token: str) -> list[int]:
     matches = []
     needle = token.lower()
@@ -556,6 +769,10 @@ def main() -> int:
         scene_path = resolve_scene_path(args.scene)
         model = mujoco.MjModel.from_xml_path(str(scene_path))
         data = mujoco.MjData(model)
+        key_id = resolve_keyframe_id(mujoco, model, args.key)
+        if key_id is not None:
+            mujoco.mj_resetDataKeyframe(model, data, key_id)
+            mujoco.mj_forward(model, data)
 
         issues: list[Issue] = []
         issues.extend(
@@ -567,6 +784,8 @@ def main() -> int:
             )
         )
         issues.extend(check_possible_marker_geoms(mujoco, model, args.marker_radius))
+        issues.extend(check_end_effector_presence_for_manipulation(mujoco, model))
+        issues.extend(check_end_effector_work_surface_clearance(mujoco, model, data))
         issues.extend(
             check_visible_reference_sites(
                 mujoco,

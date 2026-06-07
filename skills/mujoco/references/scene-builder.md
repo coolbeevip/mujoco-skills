@@ -79,6 +79,8 @@ Typical minimal edits:
 
 Do not escalate "add a few scene objects" into "rewrite the robot body".
 
+Many industrial arm models are arm-only assets. They may include a wrist flange or `attachment_site` but no native gripper, hand, suction cup, or TCP tool. For manipulation scenes, inspect the imported model before assuming a gripper exists. If no end-effector is present and the user did not ask for a specific tool, ask whether to add a simple parallel gripper, suction cup, or leave the robot arm-only.
+
 ## Modeling Rules
 
 - Inspect the body tree first; do not confuse independent rigid bodies with attached geometry.
@@ -132,6 +134,12 @@ Before reporting a newly built or materially modified scene, run the bundled san
 python scripts/mujoco_scene_check.py /absolute/path/to/scene.xml
 ```
 
+If the scene defines a ready, presentation, or task keyframe, check that keyframe explicitly:
+
+```bash
+python scripts/mujoco_scene_check.py /absolute/path/to/scene.xml --key ready
+```
+
 Treat failures as model issues to fix, not as viewer quirks. At minimum, investigate:
 
 - initial interpenetration contacts
@@ -149,6 +157,8 @@ Treat failures as model issues to fix, not as viewer quirks. At minimum, investi
 ## Hard Constraints For Gripper Modeling
 
 When the user wants grasping, gripping, or pick-and-place, check or model against the constraints below by default. Missing even one can produce a robot that moves but cannot lift the block.
+
+Before checking actuator names, determine whether the robot model actually has an end-effector. A flange, wrist body, or attachment site is not a gripper. Do not silently turn an arm-only model into a grasping robot unless the user asked for or accepted an added tool.
 
 ### 1. Do Not Check Only The Actuator; Check The Full Grasp Chain
 
@@ -190,6 +200,20 @@ If grasp planning is part of the task, prefer providing both:
 
 - one central grasp site
 - two fingertip sites
+
+### 4a. Validate Tool Mounting And Clearance
+
+After adding or reusing an end-effector:
+
+- Confirm the tool is attached to the intended wrist/flange frame, not to an unrelated body.
+- Confirm the tool/TCP is above the work surface in the ready pose. It must not sit below or pass through a conveyor, table, tray, bin, or target object.
+- Run the physical sanity checker with the same ready keyframe used for rendering:
+
+```bash
+python scripts/mujoco_scene_check.py /absolute/path/to/scene.xml --key ready
+```
+
+Do not treat a ready keyframe as valid until the end-effector clearance check passes.
 
 ### 5. Define Open/Close Semantics
 
