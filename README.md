@@ -52,6 +52,12 @@ Enter this in Codex:
 
 ![Unitree H1 humanoid walk scene](images/scene-unitree-h1.png)
 
+> Use $mujoco to create a MuJoCo simulation of a modern manufacturing facility with production lines, industrial equipment, storage racks, narrow corridors, inspection checkpoints, and a charging pad. A Crazyflie quadrotor autonomously navigates through the factory, avoids obstacles, inspects equipment status indicators, detects anomalies, and returns to its home station.
+
+![Quadrotor autonomously scene](images/scene-quadrotor-autonomously.png)
+
+
+
 ## License
 
 MIT License. See [LICENSE](LICENSE).
