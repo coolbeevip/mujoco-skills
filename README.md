@@ -56,10 +56,9 @@ Enter this in Codex:
 
 > Use $mujoco to open ~/Documents/mujoco/factory_crazyflie_inspection/scene.xml, inspect the Crazyflie quadrotor body, actuators, cameras, and inspection waypoints, then operate the drone to take off from the home pad, fly through the factory inspection route, check both conveyor lines, inspect the central equipment area and storage racks, detect abnormal objects or blocked passages, and finally return to the home pad and land safely.
 
-[![Watch the MuJoCo factory inspection video](images/youtube-7jF0NOPavmA.jpg)](https://www.youtube.com/watch?v=7jF0NOPavmA)
-
+[![Watch the MuJoCo factory inspection video](images/youtube.png)](https://www.youtube.com/watch?v=7jF0NOPavmA)
 
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
+MIT License.
