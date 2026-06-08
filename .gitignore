@@ -12,3 +12,4 @@ venv/
 htmlcov/
 *.egg-info/
 *.sock
+.idea/

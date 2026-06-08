@@ -260,6 +260,26 @@ Add at least one minimal grasp check:
 - whether the object's `z` keeps increasing after lift
 - whether the object releases from the gripper after opening
 
+Prefer the bundled verifier for this check:
+
+```bash
+python scripts/mujoco_grasp_check.py /absolute/path/to/scene.xml --key ready --object cube
+```
+
+If the open/close direction is not obvious from the model, pass explicit control values:
+
+```bash
+python scripts/mujoco_grasp_check.py /absolute/path/to/scene.xml --key ready --object cube --gripper-actuator gripper --open-value 0.04 --close-value 0
+```
+
+If lift validation is required, provide the lift actuator targets explicitly:
+
+```bash
+python scripts/mujoco_grasp_check.py /absolute/path/to/scene.xml --key ready --object cube --gripper-actuator gripper --open-value 0.04 --close-value 0 --lift shoulder_lift=0.2 --lift elbow_flex=0.4
+```
+
+Without `--lift`, the verifier checks target/gripper contact after close and release after open, but it does not prove that the robot can lift or complete pick-and-place.
+
 If this step was not performed, explicitly state in the handoff: "The motion chain was verified, but the grasp chain was not verified."
 
 ## Default Breakdown For Pick-And-Place Tasks
