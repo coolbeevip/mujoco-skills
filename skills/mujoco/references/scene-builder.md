@@ -2,6 +2,8 @@
 
 Read this file only when the task involves modeling, model edits, scene construction, or scene visualization checks.
 
+For new robot scenes, also read the scene foundation, training contract, and handoff sections of [training-readiness.md](training-readiness.md). Apply its full runtime and validation guidance when a usable training environment is requested. An explicit visual mockup may remain preview-only; record that boundary.
+
 ## Responsibilities
 
 - Create or modify `MJCF` / `XML`
@@ -24,22 +26,22 @@ Delegate those tasks to `MuJoCo Robot Control`.
 2. Reuse before rebuilding: when a real robot model exists, prefer upstream or official models before creating a placeholder from scratch.
 3. Build the smallest compilable version first, then add details.
 4. Save under `~/Documents/mujoco` with stable, readable file names.
-5. Run XML, compile, physical sanity, and viewer checks before reporting back.
+5. Run compile, physical diagnostics, initialization/interface checks, and visual inspection appropriate to the task. Headless training does not require a viewer. Package the training contract and reproducible smoke checks for newly created robot scenes.
 
 If the task has manipulation semantics such as grasping, pick-and-place, placing an object into a box, stacking, or picking, do not mistake "the model compiles" or "the robot moves" for "the task is executable". For these tasks, the end effector must also pass a grasp-chain check.
 
 ## Clarify Before Building
 
-Do not silently fill in scene requirements when user intent is unclear. Ask before creating or changing files if the missing information can change the robot model, task feasibility, object placement, physics, or validation result.
+Clarify choices that materially change the robot, task objective, control interface, or physical boundary. State reasonable defaults for reversible layout and appearance details. A future training algorithm or framework need not be chosen to build a reusable scene foundation.
 
 Ask a concise clarification question when any of these are unclear:
 
 - Robot identity or variant, such as `UR5` vs `UR5e`, fixed arm vs mobile base, or real upstream model vs placeholder.
 - Scene purpose, such as visual demo, grasping, sorting, navigation, obstacle crossing, or control experiment.
 - Required task semantics, especially whether objects only need to appear in the scene or must be physically graspable, stackable, sortable, or movable.
-- Object count, rough dimensions, placement relationships, support surfaces, or whether objects should be fixed or dynamic.
+- Whether task objects should be fixed or dynamic, or dimensions/layout constraints that change feasibility. Otherwise use and record conservative defaults.
 - Output path, when the user references an existing scene, asks for a project-specific location, or rejects the default `~/Documents/mujoco` location without giving an exact path.
-- Validation expectation, such as compile-only, viewer check, physical sanity check, or grasp-chain validation.
+- A requested validation scope that is ambiguous in a way that changes the deliverable. Otherwise apply the default foundation checks and task-appropriate physical checks.
 
 When asking, keep the question narrow and decision-oriented. If several details are missing, ask for the smallest set needed to avoid a wrong scene. Do not ask about implementation details that are already determined by stable skill rules, such as using `site` for debug markers or keeping fixed industrial arms mounted unless the user explicitly asks otherwise.
 
@@ -107,7 +109,7 @@ Do not deliver a scene only because it compiles. The first frame should look phy
 - Do not leave bins, boxes, cubes, cups, or obstacles suspended in midair unless the user explicitly asks for a falling-object or aerial scenario.
 - Fixed scene props such as tables, shelves, bins, and conveyor frames usually should not have `freejoint`.
 - Graspable objects usually should have a `freejoint`, realistic mass/inertia, nonzero friction, and an initial pose resting on a support surface without visible penetration.
-- Run a short passive simulation with zero control after construction. If a supposedly static scene object drops, rolls away, tips over, or the robot collapses, fix the initial pose, support geometry, joint setup, or inertial/contact parameters before handoff.
+- Run a short simulation with declared baseline controls after construction. Position actuators may require initial pose targets; zero control is not universally neutral. Investigate unexpected support loss or drift. For uncontrolled floating robots, distinguish expected falling from invalid geometry or unstable numerics; preserve the physical task and report missing balance/hover control.
 
 ### Sorting Scene Layout
 
@@ -126,9 +128,8 @@ For humanoid, biped, balance, or walking scenes:
 - Do not assume a humanoid with a `freejoint` will stand passively. A compiled humanoid model can still collapse immediately without a standing pose and pose-holding control.
 - Provide a named standing or ready keyframe, usually `ready` or `stand`.
 - Align both feet with the ground at the initial pose. The pelvis/root height should be derived from the foot contacts, not guessed from the visual mesh.
-- If the model uses torque `motor` actuators and no controller is provided, do not expect it to hold a standing keyframe. Use suitable position actuators plus a real balance controller, or explicitly state that standing was not validated.
-- For preview-only humanoid scenes where the user asked for a plausible standing/walking layout but did not ask for a controller, add an explicit named balance aid such as `standing_balance_assist` rather than relying on hidden assumptions. A world weld on the humanoid root can keep the initial pose upright for visualization, but it is not a walking controller and must not be presented as dynamic balance.
-- When welding a humanoid root to world for preview, set the weld `relpose` to the negative of the intended root world pose, for example `relpose="0 0 -0.982 1 0 0 0"` for a root keyframe at `z=0.982`. Verify that the feet are visually aligned with the ground and the root is not pulled back to the asset's default height.
+- If the model uses torque `motor` actuators and no controller is provided, do not expect it to hold a standing keyframe. Preserve the intended actuator semantics and state that standing was not validated; do not switch actuator type simply to make the preview stable.
+- Prefer a static offscreen render of the intended pose for preview. If an explicitly requested preview needs a balance aid, isolate and name it in a preview-only variant. The training model must retain the intended floating-base dynamics. Do not treat a root weld as a balance controller or carry preview assistance into training.
 - The keyframe `ctrl` must match the pose-holding actuator semantics. For position actuators, set `ctrl` to the corresponding joint targets, not all zeros.
 - Run the sanity checker with the same keyframe used for viewer presentation:
 
@@ -136,7 +137,7 @@ For humanoid, biped, balance, or walking scenes:
 python scripts/mujoco_scene_check.py /absolute/path/to/scene.xml --key ready
 ```
 
-Do not hand off a humanoid scene if the pelvis/root drops, drifts, or tilts during the initial stability check.
+Do not claim standing or walking validation if the robot falls under the intended controller. A scene foundation may still be delivered with balance control unverified; report whether the test used baseline controls or an actual controller.
 
 ### Sites, Markers, And Visual Helpers
 
@@ -159,7 +160,7 @@ If the scene defines a ready, presentation, or task keyframe, check that keyfram
 python scripts/mujoco_scene_check.py /absolute/path/to/scene.xml --key ready
 ```
 
-Treat failures as model issues to fix, not as viewer quirks. At minimum, investigate:
+Investigate findings against the intended task. The checker uses naming and passive-motion heuristics, so a finding is not by itself proof of a model defect. At minimum, investigate:
 
 - initial interpenetration contacts
 - dynamic free bodies that fall significantly from the initial pose
@@ -175,7 +176,7 @@ Treat failures as model issues to fix, not as viewer quirks. At minimum, investi
 
 ## Hard Constraints For Gripper Modeling
 
-When the user wants grasping, gripping, or pick-and-place, check or model against the constraints below by default. Missing even one can produce a robot that moves but cannot lift the block.
+For parallel-jaw grasping, check the constraints below. Suction, dexterous hands, and other tools require their own physical interaction and release checks; do not impose a two-jaw model on them. A moving arm alone does not prove an operational grasp chain.
 
 Before checking actuator names, determine whether the robot model actually has an end-effector. A flange, wrist body, or attachment site is not a gripper. Do not silently turn an arm-only model into a grasping robot unless the user asked for or accepted an added tool.
 
@@ -254,11 +255,12 @@ If the user's target is pick-and-place, do not validate only that:
 - the viewer opens
 - the actuator can be driven
 
-Add at least one minimal grasp check:
+For a pick-and-place capability claim, verify the applicable stages together:
 
 - whether the object actually leaves the table when the gripper closes
-- whether the object's `z` keeps increasing after lift
+- whether the object remains held for a declared interval during transport
 - whether the object releases from the gripper after opening
+- whether it settles inside the placement tolerance without disallowed collisions
 
 Prefer the bundled verifier for this check:
 
@@ -272,13 +274,15 @@ If the open/close direction is not obvious from the model, pass explicit control
 python scripts/mujoco_grasp_check.py /absolute/path/to/scene.xml --key ready --object cube --gripper-actuator gripper --open-value 0.04 --close-value 0
 ```
 
-If lift validation is required, provide the lift actuator targets explicitly:
+For lift validation, provide the lift actuator targets explicitly:
 
 ```bash
 python scripts/mujoco_grasp_check.py /absolute/path/to/scene.xml --key ready --object cube --gripper-actuator gripper --open-value 0.04 --close-value 0 --lift shoulder_lift=0.2 --lift elbow_flex=0.4
 ```
 
 Without `--lift`, the verifier checks target/gripper contact after close and release after open, but it does not prove that the robot can lift or complete pick-and-place.
+
+The bundled verifier reports lost lift contact as a warning and does not validate transport, settled placement, or the complete collision policy. Inspect its individual results and supplement it with the task-level gates in [training-readiness.md](training-readiness.md). Specify the selected gripper explicitly for multi-arm scenes; do not close every name-matched gripper by accident.
 
 If this step was not performed, explicitly state in the handoff: "The motion chain was verified, but the grasp chain was not verified."
 
@@ -291,7 +295,7 @@ When the user asks to "put the block into the box", do not treat it as a single 
 3. Approach pose / grasp pose / lift pose / place pose definition
 4. Control or planning execution
 
-If step 2 fails, fix the gripper model first instead of piling on action scripts or IK.
+If step 2 fails, distinguish missing contact geometry/tool semantics from an unreachable or misaligned starting pose. Fix the demonstrated cause before continuing; a failed close command from a distant ready pose does not establish a broken gripper.
 
 ## Opening Scenes
 
@@ -335,3 +339,4 @@ That window is not managed by the current skill's script process, and later comm
 - State whether you modified the robot body itself or only the top-level scene.
 - State whether XML compile, physical sanity, viewer, and grasp-chain checks were performed.
 - If only static modeling was performed and runtime validation was not performed, say so explicitly.
+- For new robot scenes, include the training contract, initialization/control assumptions, reproducible smoke results, and demonstrated readiness level. Do not equate physical sanity or a successful screenshot with a validated RL environment.

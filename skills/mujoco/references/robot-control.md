@@ -2,6 +2,8 @@
 
 Read this file only when the task involves runtime execution, inspection, viewer use, actuators, gripper actions, or minimal control experiments.
 
+The viewer/socket workflow below is for interactive operation. For training, demonstration collection, deterministic replay, or batch validation, read [training-readiness.md](training-readiness.md) and use a synchronous headless runtime that owns simulation stepping. These tasks do not require opening a viewer.
+
 ## Unified Entry Points
 
 Prefer the combination of these two scripts:
@@ -24,14 +26,14 @@ PY
 
 ## Default Workflow
 
-Proceed through control tasks in this order:
+Proceed through interactive viewer control tasks in this order:
 
 1. `bootstrap`
-2. Start `mujoco_viewer.py`
+2. Connect to a live viewer for the same scene, or start `mujoco_viewer.py`
 3. Use `mujoco_cli.py` to query actuators and current ctrl
 4. Use `mujoco_cli.py` to send control commands
 
-Do not skip the first two steps and jump straight into complex control.
+Verify the environment and live session before sending interactive controls. For an existing training runtime, preserve its state and execution interface.
 
 ## Check The Environment First
 
@@ -40,19 +42,13 @@ Before running viewer or control commands, confirm:
 - Python 3 is available
 - the `mujoco` Python package can be imported
 
-The default behavior is not "wait for an error and react". Instead:
-
-1. Check the environment first.
-2. Automatically install missing packages.
-3. Continue the control task after installation.
-
-Explicit checks can call:
+Use the project's selected Python environment and check the actual import/version:
 
 ```bash
-python scripts/env_bootstrap.py
+python -c "import sys, mujoco; print(sys.executable); print(mujoco.__version__)"
 ```
 
-If `mujoco` is missing, install it automatically and continue. Do not expose `ModuleNotFoundError: No module named 'mujoco'` to the user as the first response.
+If dependencies are missing, install them in the project's environment within available permissions and respect its dependency constraints. Record the versions used; do not silently upgrade the environment during a reproducibility task. `env_bootstrap.py` currently exposes helper functions only; invoking the file directly does not run its checks.
 
 ## Treat Action Requests As Execution Requests
 
@@ -65,7 +61,7 @@ When the user says any of the following, do not stop at an explanation:
 - return the robot arm to zero
 - set an actuator to a specific value
 
-Default action:
+Default action for interactive operation:
 
 1. Start or connect to `mujoco_viewer.py`.
 2. Use `mujoco_cli.py actuators` / `info` to gather the minimum required structure information.
@@ -85,15 +81,15 @@ Default rules:
 
 ## Viewer Reuse
 
-Robot operations should connect to the visual viewer by default. Do not default to offline headless execution.
+Interactive robot operations should connect to the visual viewer by default. Learning and reproducibility tasks use the headless path described above.
 
 - The viewer started by `mujoco_viewer.py` should be held by the Python script through `mujoco.viewer`, not by dropping the scene directly into `MuJoCo.app`.
 - `mujoco_cli.py` should send commands through `CLI -> socket -> running viewer process -> data.ctrl`.
-- Use a separate offline script or one-off Python snippet only when the user explicitly asks for no-window, batch, or offline execution.
+- Use a separate synchronous runtime for training, recorded rollouts, and repeatable validation; render optionally from that runtime.
 - Do not open a new window repeatedly for repeated control requests.
 
-- Before starting a viewer, check whether a viewer socket for the same scene already exists.
-- If it exists, reuse it directly instead of opening a new window.
+- Before starting a viewer, check the same-scene socket with a bounded liveness query and confirm the loaded scene/keyframe. Socket-file existence alone does not prove a live service.
+- Reuse a live compatible viewer instead of opening a new window. The current CLI has no built-in timeout, so bound diagnostics through the calling process.
 - State in the result that the current viewer was reused.
 
 ## Common Commands
@@ -125,6 +121,8 @@ If the goal is only a simple action, do not write a large new Python script each
 
 If multiple joints or multiple robot arms need to move "at the same time", merge same-timestep control values into one `set-batch`. Do not send several consecutive `set` commands.
 
+Prevalidate every selector and finite value before using `set-batch`: the current service can partially apply a batch before encountering an invalid selector. Its main loop also advances physics between requests, so `set` followed by `step` does not define an exact training transition. Use the training runtime for synchronized actions and fixed-step rollouts.
+
 ## Gripper Semantics
 
 ### Open The Gripper
@@ -133,8 +131,8 @@ Default order:
 
 1. Prefer an actuator whose name is close to `gripper`, `grip`, or `finger`.
 2. If the open/close direction is known, set the actuator directly to the open end.
-3. If the direction is unknown, inspect `ctrlrange` first.
-4. By default, interpret "open the gripper" as the larger end of the range; correct this if naming or previous results show the opposite.
+3. Resolve open/close semantics from the robot's training contract, upstream model, or explicit actuator/transmission definitions.
+4. If still unknown, use a small bounded probe from a clear pose and measure fingertip separation. Record the mapping; do not assume the larger end of `ctrlrange` means open. For multiple grippers, identify the requested arm and map each actuator separately.
 
 ### Close The Gripper
 
