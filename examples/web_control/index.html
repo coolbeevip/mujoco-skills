@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>仿真工作台 · MicroDuck</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="styles.css">
+  <script src="display.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body data-layout="standard" data-density="comfortable">
+  <header class="topbar">
+    <div class="identity"><span class="wordmark">SIM / LAB</span><span class="divider"></span><span>场景控制台</span></div>
+    <span class="connection"><span class="status-dot"></span><span id="connection-text">正在连接本机服务</span></span>
+  </header>
+
+  <main class="workspace">
+    <section class="intro" aria-labelledby="page-title">
+      <div><p class="eyebrow">SIMULATION WORKSPACE</p><h1 id="page-title">仿真工作台</h1><p class="subtitle">加载场景，选择动作，观察每一步。</p></div>
+      <div class="preview-label"><span class="mono">CPU</span> 本地仿真</div>
+    </section>
+
+    <div class="preview-notice" role="note">
+      <span id="runtime-note">请选择并加载场景。网页失去心跳 3 秒后自动暂停，恢复连接后需手动继续。</span>
+    </div>
+
+    <section class="scene-toolbar" aria-label="场景配置">
+      <div class="scene-field"><label for="scene-select">场景</label>
+        <select id="scene-select">
+          <option value="walk">MicroDuck · 步行</option>
+          <option value="ball">MicroDuck · 带球</option>
+          <option value="roller">MicroDuck · 带轮</option>
+        </select>
+      </div>
+      <button class="button primary" id="load-scene" disabled>加载场景</button>
+      <div class="toolbar-spacer"></div>
+      <button class="button" id="pause" disabled>继续仿真</button>
+      <button class="button" id="reset" disabled>重置场景</button>
+    </section>
+
+    <div class="workbench">
+      <section class="viewer-panel" aria-labelledby="viewer-heading">
+        <div class="panel-heading viewer-heading"><div><span class="section-index">01</span><h2 id="viewer-heading">仿真视图</h2></div><span class="viewport-state">未连接</span></div>
+        <div class="display-toolbar">
+          <label for="quality-select">画质</label>
+          <select id="quality-select"><option value="auto">自动 · 适配屏幕</option><option value="720">720p · 较低开销</option><option value="1080">1080p · 高清</option></select>
+          <span class="mono" id="render-size" aria-live="polite">等待画面</span>
+        </div>
+        <div class="viewport" id="viewport" tabindex="0" aria-label="仿真画面；拖动旋转，滚轮缩放；键盘左右键旋转，加减键缩放">
+          <img id="live-frame" alt="MuJoCo 实时仿真画面" hidden draggable="false">
+          <div class="viewport-top"><span id="viewport-scene">MICRODUCK / WALK</span><span>VIEWPORT</span></div>
+          <div class="empty-view">
+            <div class="frame-mark" aria-hidden="true"><span></span></div>
+            <h3>等待加载场景</h3>
+            <p>选择场景后点击「加载场景」</p>
+            <span class="empty-tag">尚无仿真画面</span>
+          </div>
+          <div class="viewport-bottom"><span>拖动后松开旋转 · 滚轮缩放</span><span class="mono">MuJoCo / CPU</span></div>
+        </div>
+        <div class="telemetry" aria-label="仿真状态">
+          <div><span>仿真时间</span><strong id="sim-time">—</strong></div>
+          <div><span>当前策略</span><strong id="sim-policy">—</strong></div>
+          <div><span>执行阶段</span><strong id="sim-stage">未加载</strong></div>
+        </div>
+      </section>
+
+      <aside class="actions-panel" aria-labelledby="actions-heading">
+        <div class="panel-heading"><div><span class="section-index">02</span><h2 id="actions-heading">原子动作</h2></div><span class="count-label" id="action-count"></span></div>
+        <div class="actions-content">
+          <div class="scene-description"><strong id="scene-title">MicroDuck · 步行</strong><p id="scene-description"></p></div>
+          <section class="action-group" aria-labelledby="movement-heading">
+            <h3 id="movement-heading">基础移动 <span>持续指令</span></h3>
+            <div class="movement-grid" id="movement-actions"></div>
+          </section>
+          <section class="action-group" aria-labelledby="skill-heading" id="skill-section">
+            <h3 id="skill-heading">动作策略 <span>单次触发</span></h3>
+            <div class="skills-grid" id="skill-actions"></div>
+          </section>
+          <div class="action-help"><span class="help-label">控制说明</span><p>先停止移动并等待站稳，再执行动作。停止运动与暂停仿真是两个不同操作。</p></div>
+        </div>
+      </aside>
+    </div>
+
+    <section class="activity-panel" aria-labelledby="activity-heading">
+      <div class="panel-heading"><div><span class="section-index">03</span><h2 id="activity-heading">操作反馈</h2></div><span class="count-label">SERVER RESPONSE</span></div>
+      <div class="activity-body" aria-live="polite" aria-atomic="true">
+        <span class="activity-indicator" aria-hidden="true"></span>
+        <div><strong id="feedback-title">加载场景后开始控制</strong><p id="feedback-detail">加载完成后点击继续仿真，再选择动作。动作执行结果以实时物理状态为准。</p></div>
+        <code id="feedback-code">未发送指令</code>
+      </div>
+    </section>
+
+    <footer class="workspace-footer"><span>本地仿真 · 场景与控制分离</span><span class="mono">examples/web_control</span></footer>
+  </main>
+
+  <details class="tweaks">
+    <summary>Tweaks <span>页面布局</span></summary>
+    <div class="tweaks-body">
+      <label for="layout-select">布局方案</label>
+      <select id="layout-select"><option value="standard">标准 · 右侧操作</option><option value="left">操作优先 · 左侧操作</option><option value="wide">视图优先 · 底部操作</option></select>
+      <label for="density-select">内容间距</label>
+      <select id="density-select"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select>
+      <p>仅调整页面外观，不影响动作映射。</p>
+    </div>
+  </details>
+</body>
+</html>
