@@ -1,0 +1,4 @@
+numpy==2.3.2
+mujoco==3.7.0
+onnxruntime==1.23.2
+better-actuator-models @ git+https://github.com/Rhoban/bam.git@62bd8ce12154340be97e06f7f41a0ca8f116d967
