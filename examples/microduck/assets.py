@@ -14,6 +14,7 @@ DEFAULT_CACHE = ROOT / ".cache"
 
 
 def verify(cache=DEFAULT_CACHE, entries=None):
+    # SHA-256 同时检查文件完整性与固定版本；该函数不访问网络。
     cache = Path(cache).resolve()
     for item in entries if entries is not None else lock()["files"]:
         path = asset_path(cache, item["path"])
@@ -36,6 +37,7 @@ def digest(path):
 
 
 def asset_path(cache, name):
+    # 解析相对路径和符号链接后检查边界，确保文件仍位于缓存目录内。
     path = (cache / name).resolve()
     if not path.is_relative_to(cache) or path == cache:
         raise ValueError(f"unsafe asset path: {name}")
@@ -52,6 +54,7 @@ def prepare(cache=DEFAULT_CACHE):
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = None
         try:
+            # 先写同目录临时文件，全部下载且哈希匹配后再替换正式文件。
             with urlopen(item["url"], timeout=30) as response:
                 with tempfile.NamedTemporaryFile(
                     dir=path.parent, delete=False
@@ -67,6 +70,7 @@ def prepare(cache=DEFAULT_CACHE):
                 temp.unlink(missing_ok=True)
 
     with ThreadPoolExecutor(max_workers=4) as pool:
+        # 并行获取独立资产；消费 map 结果以等待完成并传播下载异常。
         list(pool.map(fetch, lock()["files"]))
     return verify(cache)
 

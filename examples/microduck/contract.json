@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "headless_and_keyboard_verified",
+  "status": "default_sequence_and_all_policy_execution_verified",
   "full_rl_environment": false,
   "assets": "assets.lock.json",
   "versions": {
@@ -274,13 +274,114 @@
         0,
         0
       ],
-      "q": "exit"
+      "q": "exit",
+      "y": "sit/rise in walk",
+      "g": "ground_pick in walk",
+      "k": "kick_left in walk",
+      "l": "kick_right in walk",
+      "r": "single roulade in walk",
+      "c": "crouch in roller"
     },
     "release_behavior": "latched until next recognized key",
     "unknown_keys": "ignored",
     "rendering": "one-way model/data copy; viewer cannot alter authoritative physics",
-    "on_fall": "stop with nonzero exit; no automatic recovery",
+    "on_fall": "strict in base mode; action-specific allowances and bounded recovery described in policy_modes",
     "report": "keyboard-verification.json",
-    "render_headless_trace_identical": true
+    "render_headless_trace_identical": true,
+    "report_scope": "keyboard-verification.json covers original walk controls; added actions use policy-keyboard-verification.json"
+  },
+  "scope": "Existing command, initialization, observation and sequence fields describe default walk mode; additional policy contracts are under policy_modes.",
+  "policy_modes": {
+    "manifest": ".cache/policies/manifest.json",
+    "catalog": "policies.py",
+    "controller": "behaviors.py",
+    "headless_entry": "python policy_demo.py --policy all",
+    "report": "policy-verification.json",
+    "model_revision": "29e887ecfbf5d37144759e5a9f8a176dfb83d547",
+    "walk": {
+      "scene": "scene.xml",
+      "ball_scene": "scene_ball.xml",
+      "policies": [
+        "standing",
+        "walking",
+        "sitstand",
+        "ground_pick",
+        "kick_left",
+        "kick_right",
+        "roulade"
+      ],
+      "action_scale": 1
+    },
+    "roller": {
+      "scene": "scene_rollers.xml",
+      "policies": [
+        "roller",
+        "crouch"
+      ],
+      "root_height_m": 0.1385,
+      "passive_wheel_joints": 4,
+      "wheel_frictionloss": 0.003,
+      "action_scale": 0.8,
+      "command": "vx m/s, zero lateral, relative heading error rad",
+      "bounds": {
+        "vx": [
+          -0.5,
+          0.6
+        ],
+        "heading_error_rad": [
+          -1,
+          1
+        ]
+      }
+    },
+    "sitstand": {
+      "sit_flag": 1,
+      "rise_flag": 0,
+      "min_sit_s": 2,
+      "rise_s": 1,
+      "hold": "until y is pressed again"
+    },
+    "ground_pick": {
+      "period_s": 4,
+      "end_phase": 0.7,
+      "duration_s": 2.8,
+      "command": "cos(2*pi*phase), sin(2*pi*phase), 0"
+    },
+    "crouch": {
+      "period_s": 5,
+      "end_phase": 0.7,
+      "duration_s": 3.5,
+      "command": "cos(2*pi*phase), sin(2*pi*phase), 0"
+    },
+    "episodic": {
+      "kick_left_s": 0.5,
+      "kick_right_s": 0.5,
+      "roulade_s": 1,
+      "command": [
+        0,
+        0,
+        0
+      ],
+      "chain": false
+    },
+    "transitions": {
+      "gate": "zero movement command, no head/torso contact, torso tilt <=20deg, base horizontal speed <=0.15m/s",
+      "busy": "ignore new actions/movement; s/space clears movement but completes active action; q exits",
+      "recovery_s": 2,
+      "pose_reset": false
+    },
+    "fall_monitoring": {
+      "base": "unchanged strict contact / sustained tilt detector",
+      "action_and_recovery": "record head/torso contacts and tilt; allow intentional contact/tilt; reject invalid physics, warnings or samples",
+      "recovery_deadline": "fail immediately if contact or tilt >45deg; then resume base detector",
+      "seated": "action monitoring remains active until explicit rise"
+    },
+    "ball": {
+      "radius_m": 0.035,
+      "mass_kg": 0.015,
+      "placement": "on accepted kick, reset ball only to body-yaw-relative [0.09, +/-0.042, 0.035]; robot state unchanged"
+    },
+    "verification_scope": "executed means prescribed runtime and upright recovery only; no kick, pick or full-roll task success claim",
+    "linux": "not_tested"
   }
 }

@@ -1,0 +1,529 @@
+{
+  "platform": "macOS 15.7.3 arm64",
+  "python": "3.12.12",
+  "network_isolation": "sandbox-exec deny network*",
+  "input": "real PTY key input; real MuJoCo passive viewer",
+  "scope": "command dispatch, action windows, recovery and exit; no task success claim",
+  "native_close_button_automated": false,
+  "public_viewer_close_verified": true,
+  "walk": {
+    "mode": "walk",
+    "ball": true,
+    "status": "stopped",
+    "reason": "quit_key",
+    "events": [
+      {
+        "key": "y",
+        "control_step": 1918,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "started: sitstand",
+        "behavior": {
+          "mode": "walk",
+          "active": "sitstand",
+          "stage": "sitting",
+          "action_control_steps": 0,
+          "recovery_control_steps": 0,
+          "completed_windows": [],
+          "action_success_verified": false,
+          "allowed_contact_steps": 0,
+          "max_tilt_deg": 1.661766140931281
+        },
+        "position_m": [
+          0.0035692506546651562,
+          -0.0001569593437412583,
+          0.11624832747682422
+        ],
+        "yaw_rad": 0.02762808252581349
+      },
+      {
+        "key": "y",
+        "control_step": 2399,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "standing up",
+        "behavior": {
+          "mode": "walk",
+          "active": "sitstand",
+          "stage": "rising",
+          "action_control_steps": 0,
+          "recovery_control_steps": 0,
+          "completed_windows": [],
+          "action_success_verified": false,
+          "allowed_contact_steps": 0,
+          "max_tilt_deg": 5.575254954972297
+        },
+        "position_m": [
+          -0.06810559830616605,
+          0.0075186167483518,
+          0.05941316040195909
+        ],
+        "yaw_rad": 0.029215364120073778
+      },
+      {
+        "key": "g",
+        "control_step": 4107,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "started: ground_pick",
+        "behavior": {
+          "mode": "walk",
+          "active": "ground_pick",
+          "stage": "executing",
+          "action_control_steps": 0,
+          "recovery_control_steps": 0,
+          "completed_windows": [
+            "sitstand"
+          ],
+          "action_success_verified": false,
+          "allowed_contact_steps": 60,
+          "max_tilt_deg": 98.39211146188228
+        },
+        "position_m": [
+          -0.05010569288725187,
+          0.19014276508370817,
+          0.11620085194633938
+        ],
+        "yaw_rad": 2.9862045579171665
+      },
+      {
+        "key": "k",
+        "control_step": 5109,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "started: kick_left",
+        "behavior": {
+          "mode": "walk",
+          "active": "kick_left",
+          "stage": "executing",
+          "action_control_steps": 0,
+          "recovery_control_steps": 0,
+          "completed_windows": [
+            "sitstand",
+            "ground_pick"
+          ],
+          "action_success_verified": false,
+          "allowed_contact_steps": 60,
+          "max_tilt_deg": 98.39211146188228
+        },
+        "position_m": [
+          -0.049174272437243864,
+          0.19245224596473318,
+          0.1164078192217877
+        ],
+        "yaw_rad": 3.0723946455029325
+      },
+      {
+        "key": "l",
+        "control_step": 5735,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "started: kick_right",
+        "behavior": {
+          "mode": "walk",
+          "active": "kick_right",
+          "stage": "executing",
+          "action_control_steps": 0,
+          "recovery_control_steps": 0,
+          "completed_windows": [
+            "sitstand",
+            "ground_pick",
+            "kick_left"
+          ],
+          "action_success_verified": false,
+          "allowed_contact_steps": 60,
+          "max_tilt_deg": 98.39211146188228
+        },
+        "position_m": [
+          -0.07793832917783818,
+          0.1770819192394251,
+          0.11625121476146198
+        ],
+        "yaw_rad": 2.6410006803705466
+      },
+      {
+        "key": "r",
+        "control_step": 6743,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "started: roulade",
+        "behavior": {
+          "mode": "walk",
+          "active": "roulade",
+          "stage": "executing",
+          "action_control_steps": 0,
+          "recovery_control_steps": 0,
+          "completed_windows": [
+            "sitstand",
+            "ground_pick",
+            "kick_left",
+            "kick_right"
+          ],
+          "action_success_verified": false,
+          "allowed_contact_steps": 60,
+          "max_tilt_deg": 98.39211146188228
+        },
+        "position_m": [
+          -0.06615092826776392,
+          0.21277989973087189,
+          0.11630607799461365
+        ],
+        "yaw_rad": 2.8036282930237415
+      },
+      {
+        "key": "q",
+        "control_step": 7263,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "quit",
+        "behavior": {
+          "mode": "walk",
+          "active": null,
+          "stage": "idle",
+          "action_control_steps": 50,
+          "recovery_control_steps": 0,
+          "completed_windows": [
+            "sitstand",
+            "ground_pick",
+            "kick_left",
+            "kick_right",
+            "roulade"
+          ],
+          "action_success_verified": false,
+          "allowed_contact_steps": 260,
+          "max_tilt_deg": 145.32049774694957
+        },
+        "position_m": [
+          -0.1354783839240322,
+          0.2841422042307842,
+          0.11631173541688392
+        ],
+        "yaw_rad": -3.2313439504528922
+      }
+    ],
+    "final": {
+      "time_s": 145.2599999999404,
+      "control_steps": 7263,
+      "physics_steps": 29052,
+      "position_m": [
+        -0.1354783839240322,
+        0.2841422042307842,
+        0.11631173541688392
+      ],
+      "quaternion_wxyz": [
+        0.044860951664095906,
+        -0.0005955885698020819,
+        0.0006385262390211243,
+        0.9989928591207691
+      ],
+      "qpos": [
+        -0.1354783839240322,
+        0.2841422042307842,
+        0.11631173541688392,
+        0.044860951664095906,
+        -0.0005955885698020819,
+        0.0006385262390211243,
+        0.9989928591207691,
+        -0.0013138943710941536,
+        -0.09223743754739418,
+        -0.44822959995911593,
+        0.027687095747534685,
+        0.47072576458761595,
+        0.23222025634388707,
+        0.4398083876347113,
+        -0.02985018430133529,
+        0.05162682433172696,
+        0.0005775582339343016,
+        0.09282230783978986,
+        0.407940374935353,
+        -0.025004636038570928,
+        -0.4331196006963702,
+        -13.675543503758538,
+        13.064406066199913,
+        0.034632818157539845,
+        0.19117968872418042,
+        -0.6299831624196908,
+        -0.6581665104140315,
+        0.3652237482098143
+      ],
+      "qvel": [
+        0.00044192114100541325,
+        0.0007612045976598803,
+        -0.0006914510850214012,
+        0.008342786454049627,
+        -0.003866321066778045,
+        0.0006462374639765541,
+        -0.00002952662742877718,
+        -0.0004782290761563004,
+        0.00018628439686779443,
+        0.0005550130903992376,
+        -0.00008510486143380571,
+        0.00022285849110424295,
+        -0.00013995993779713733,
+        0.00014298408527189043,
+        -0.00044717650814132137,
+        -0.000043050040707449065,
+        0.0006849891300988114,
+        -0.000038138282380968414,
+        -0.0005087360505369416,
+        0.0005905838929145848,
+        -0.4442007713668873,
+        0.4200357557886815,
+        -2.757593659721765e-16,
+        -11.799139443918747,
+        -11.159390554636255,
+        8.344077123757614
+      ],
+      "policy": "standing",
+      "fall_verdict": "not_implemented"
+    },
+    "trace_sha256": "9f33b8d3f7008c7d0e34d806deff337cd51079af37c452bc53b8865622072392",
+    "behavior": {
+      "mode": "walk",
+      "active": null,
+      "stage": "idle",
+      "action_control_steps": 50,
+      "recovery_control_steps": 0,
+      "completed_windows": [
+        "sitstand",
+        "ground_pick",
+        "kick_left",
+        "kick_right",
+        "roulade"
+      ],
+      "action_success_verified": false,
+      "allowed_contact_steps": 260,
+      "max_tilt_deg": 145.32049774694957
+    },
+    "full_sequence_verified": false
+  },
+  "roller": {
+    "mode": "roller",
+    "ball": false,
+    "status": "stopped",
+    "reason": "quit_key",
+    "events": [
+      {
+        "key": "c",
+        "control_step": 560,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "started: crouch",
+        "behavior": {
+          "mode": "roller",
+          "active": "crouch",
+          "stage": "executing",
+          "action_control_steps": 0,
+          "recovery_control_steps": 0,
+          "completed_windows": [],
+          "action_success_verified": false,
+          "allowed_contact_steps": 0,
+          "max_tilt_deg": 8.602425372467525
+        },
+        "position_m": [
+          0.007071502692278074,
+          -0.00013170859425481842,
+          0.11610010593108415
+        ],
+        "yaw_rad": 0.10003405694612545
+      },
+      {
+        "key": "w",
+        "control_step": 1727,
+        "command": [
+          0.3,
+          0,
+          0
+        ],
+        "response": "command updated",
+        "behavior": {
+          "mode": "roller",
+          "active": null,
+          "stage": "idle",
+          "action_control_steps": 175,
+          "recovery_control_steps": 0,
+          "completed_windows": [
+            "crouch"
+          ],
+          "action_success_verified": false,
+          "allowed_contact_steps": 0,
+          "max_tilt_deg": 10.535495775636326
+        },
+        "position_m": [
+          0.009194934064449479,
+          -0.0019180308005858771,
+          0.11601633558814088
+        ],
+        "yaw_rad": 0.0929453081914658
+      },
+      {
+        "key": "s",
+        "control_step": 2361,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "command updated",
+        "behavior": {
+          "mode": "roller",
+          "active": null,
+          "stage": "idle",
+          "action_control_steps": 175,
+          "recovery_control_steps": 0,
+          "completed_windows": [
+            "crouch"
+          ],
+          "action_success_verified": false,
+          "allowed_contact_steps": 0,
+          "max_tilt_deg": 13.200357326243733
+        },
+        "position_m": [
+          0.852582836259942,
+          0.26235840683624306,
+          0.11398639264335433
+        ],
+        "yaw_rad": 0.47284439060391226
+      },
+      {
+        "key": "q",
+        "control_step": 3526,
+        "command": [
+          0,
+          0,
+          0
+        ],
+        "response": "quit",
+        "behavior": {
+          "mode": "roller",
+          "active": null,
+          "stage": "idle",
+          "action_control_steps": 175,
+          "recovery_control_steps": 0,
+          "completed_windows": [
+            "crouch"
+          ],
+          "action_success_verified": false,
+          "allowed_contact_steps": 0,
+          "max_tilt_deg": 13.200357326243733
+        },
+        "position_m": [
+          0.8625750782059105,
+          0.2660082983868474,
+          0.1156601567610783
+        ],
+        "yaw_rad": 0.4848248815903337
+      }
+    ],
+    "final": {
+      "time_s": 70.52000000000835,
+      "control_steps": 3526,
+      "physics_steps": 14104,
+      "position_m": [
+        0.8625750782059105,
+        0.2660082983868474,
+        0.1156601567610783
+      ],
+      "quaternion_wxyz": [
+        0.9706170716367896,
+        -0.007743679524425987,
+        0.014359216786858944,
+        0.24007571424014296
+      ],
+      "qpos": [
+        0.8625750782059105,
+        0.2660082983868474,
+        0.1156601567610783,
+        0.9706170716367896,
+        -0.007743679524425987,
+        0.014359216786858944,
+        0.24007571424014296,
+        0.0028685841324759148,
+        0.38510110326863595,
+        -0.43669773955822294,
+        0.11286333910855789,
+        0.5167234548749662,
+        65.23055827643424,
+        61.73990861028312,
+        0.34147689167216805,
+        0.35408973506415076,
+        -0.0013191030863054492,
+        0.009156649636488332,
+        0.08292602747769308,
+        -0.35501406150495396,
+        0.3270016308551016,
+        -0.09064802093470836,
+        -0.38354634144448246,
+        65.66910232151349,
+        63.31292504732513
+      ],
+      "qvel": [
+        -0.000015018704646695291,
+        -0.000009188129850115575,
+        0.000046337969942621447,
+        -0.00040595697284907865,
+        -0.0010806664959216218,
+        -0.00016556246452618104,
+        -0.00012053227659448583,
+        0.000007371818956243066,
+        0.0001974454774378195,
+        -0.0006943477166184692,
+        0.0002757844914291496,
+        0.002145526851335187,
+        0.0028210233383802333,
+        0.0000833601975818669,
+        -0.00006277769780652963,
+        0.00001412012613249267,
+        0.000011428285562060478,
+        0.00023716117703530683,
+        0.0008394820963182584,
+        -0.00022273761138515692,
+        0.0006901013989172672,
+        -0.00022346226214849376,
+        -0.005164339675750744,
+        0.0031607177934936817
+      ],
+      "policy": "roller",
+      "fall_verdict": "not_implemented"
+    },
+    "trace_sha256": "e05f2f39734b74e1723fb36438b42da4716237c4773e4460125643f4c37e52a0",
+    "behavior": {
+      "mode": "roller",
+      "active": null,
+      "stage": "idle",
+      "action_control_steps": 175,
+      "recovery_control_steps": 0,
+      "completed_windows": [
+        "crouch"
+      ],
+      "action_success_verified": false,
+      "allowed_contact_steps": 0,
+      "max_tilt_deg": 13.200357326243733
+    },
+    "full_sequence_verified": false
+  }
+}

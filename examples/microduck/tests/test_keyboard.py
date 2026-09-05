@@ -2,10 +2,58 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from keyboard import command_for_key, Display, TerminalInput
+from keyboard import command_for_key, connect_pycharm, Display, TerminalInput
 from runtime import Runtime
 import numpy as np
 import pytest
+
+
+def test_debug_disabled_needs_no_optional_dependency(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pydevd_pycharm", None)
+    connect_pycharm(None)
+
+
+def test_debug_missing_dependency_reports_installation(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pydevd_pycharm", None)
+    with pytest.raises(RuntimeError, match="install the version"):
+        connect_pycharm(5678)
+
+
+def test_debug_connects_locally_and_preserves_terminal(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    settrace = Mock()
+    monkeypatch.setitem(
+        sys.modules, "pydevd_pycharm", SimpleNamespace(settrace=settrace)
+    )
+    connect_pycharm(6789)
+    settrace.assert_called_once_with(
+        "127.0.0.1",
+        port=6789,
+        stdout_to_server=False,
+        stderr_to_server=False,
+        suspend=True,
+    )
+
+
+def test_debug_connection_failure_reports_server(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    monkeypatch.setitem(
+        sys.modules,
+        "pydevd_pycharm",
+        SimpleNamespace(settrace=Mock(side_effect=ConnectionRefusedError("refused"))),
+    )
+    with pytest.raises(RuntimeError, match="start the Python Debug Server"):
+        connect_pycharm(5678)
+
+
+@pytest.mark.parametrize("port", [0, -1, 65536])
+def test_debug_rejects_invalid_port(port):
+    with pytest.raises(ValueError, match="between 1 and 65535"):
+        connect_pycharm(port)
 
 
 def test_keyboard_commands_replace_the_entire_previous_command():

@@ -233,6 +233,86 @@
       "path": "policies/manifest.json",
       "url": "https://huggingface.co/pollen-robotics/microduck-policies/resolve/088524a64e2557dc453256b6071dbb9d23888802/manifest.json",
       "sha256": "d0c36e7b71129dd617339c63bcb1d704eab282c8617ebf14c2013a01abfb2dda"
+    },
+    {
+      "path": "model/scene_rollers.xml",
+      "url": "https://raw.githubusercontent.com/pollen-robotics/microduck_rl/29e887ecfbf5d37144759e5a9f8a176dfb83d547/src/mjlab_microduck/robot/microduck/scene_rollers.xml",
+      "sha256": "9029044d5b605882c7f10b52b9bf90c9d5572fb25d79033d0d04026a269375ac"
+    },
+    {
+      "path": "model/robot_groundcontact_rollers.xml",
+      "url": "https://raw.githubusercontent.com/pollen-robotics/microduck_rl/29e887ecfbf5d37144759e5a9f8a176dfb83d547/src/mjlab_microduck/robot/microduck/robot_groundcontact_rollers.xml",
+      "sha256": "e410e74978511fa2efdc9dcbe1488964c0c149ecca568a59dc73ef7f8844bf8b"
+    },
+    {
+      "path": "model/scene_ball.xml",
+      "url": "https://raw.githubusercontent.com/pollen-robotics/microduck_rl/29e887ecfbf5d37144759e5a9f8a176dfb83d547/src/mjlab_microduck/robot/microduck/scene_ball.xml",
+      "sha256": "3a6e69457fe68af692823c46da9e081021e3bf4be6c5381018446762acd20265"
+    },
+    {
+      "path": "model/ball.xml",
+      "url": "https://raw.githubusercontent.com/pollen-robotics/microduck_rl/29e887ecfbf5d37144759e5a9f8a176dfb83d547/src/mjlab_microduck/robot/microduck/ball.xml",
+      "sha256": "54a455bf454a9b6167655381df91593bbca86695d8d71e29fb6af69454c7c865"
+    },
+    {
+      "path": "model/assets/ankle_l_v1.stl",
+      "url": "https://raw.githubusercontent.com/pollen-robotics/microduck_rl/29e887ecfbf5d37144759e5a9f8a176dfb83d547/src/mjlab_microduck/robot/microduck/assets/ankle_l_v1.stl",
+      "sha256": "cf4407956caf05b2e9bb2c75764fa365d217f44efb5d365ed18ccfa62db3436f"
+    },
+    {
+      "path": "model/assets/tire.stl",
+      "url": "https://raw.githubusercontent.com/pollen-robotics/microduck_rl/29e887ecfbf5d37144759e5a9f8a176dfb83d547/src/mjlab_microduck/robot/microduck/assets/tire.stl",
+      "sha256": "8aa460566e99afcccccd5c0507c883d3f6d1901e28ddd492cf0c7edc41067b54"
+    },
+    {
+      "path": "model/assets/ankle_r_v1.stl",
+      "url": "https://raw.githubusercontent.com/pollen-robotics/microduck_rl/29e887ecfbf5d37144759e5a9f8a176dfb83d547/src/mjlab_microduck/robot/microduck/assets/ankle_r_v1.stl",
+      "sha256": "0ddd5d3135cde74bddbfbaf6469f50ac02ba44681b796853a052bf0d23751d1d"
+    },
+    {
+      "path": "model/assets/rim.stl",
+      "url": "https://raw.githubusercontent.com/pollen-robotics/microduck_rl/29e887ecfbf5d37144759e5a9f8a176dfb83d547/src/mjlab_microduck/robot/microduck/assets/rim.stl",
+      "sha256": "b3c9cc8ea50a1406d289060dc007894e009471f15b59baf443a5545bfc242c6f"
+    },
+    {
+      "path": "model/assets/roller_blade.stl",
+      "url": "https://raw.githubusercontent.com/pollen-robotics/microduck_rl/29e887ecfbf5d37144759e5a9f8a176dfb83d547/src/mjlab_microduck/robot/microduck/assets/roller_blade.stl",
+      "sha256": "cbdc755394d5046640db6045dd241921654ec17a313db9de8e851c14b918472f"
+    },
+    {
+      "path": "policies/alpha_ground_pick.onnx",
+      "url": "https://huggingface.co/pollen-robotics/microduck-policies/resolve/088524a64e2557dc453256b6071dbb9d23888802/alpha_ground_pick.onnx",
+      "sha256": "ffbf5109982ff999b0ba53afe86b9ae731bbec679d67fb7f8ab4c52152c88872"
+    },
+    {
+      "path": "policies/alpha_sitstand.onnx",
+      "url": "https://huggingface.co/pollen-robotics/microduck-policies/resolve/088524a64e2557dc453256b6071dbb9d23888802/alpha_sitstand.onnx",
+      "sha256": "c6c40e35e726eabd803d633e090d112994f469921152448367953fbaf9799bc8"
+    },
+    {
+      "path": "policies/ball_kick_left.onnx",
+      "url": "https://huggingface.co/pollen-robotics/microduck-policies/resolve/088524a64e2557dc453256b6071dbb9d23888802/ball_kick_left.onnx",
+      "sha256": "d6928284dccd3dd61e08bf2f760effa74309fbefd97b2b31afb2a60f526d196a"
+    },
+    {
+      "path": "policies/ball_kick_right.onnx",
+      "url": "https://huggingface.co/pollen-robotics/microduck-policies/resolve/088524a64e2557dc453256b6071dbb9d23888802/ball_kick_right.onnx",
+      "sha256": "147a32c388c6b19111b3ac3b550a9a6dc8b8bf267118af4d8c3712522eedb5af"
+    },
+    {
+      "path": "policies/roller.onnx",
+      "url": "https://huggingface.co/pollen-robotics/microduck-policies/resolve/088524a64e2557dc453256b6071dbb9d23888802/roller.onnx",
+      "sha256": "cf05651d2708a2f9364212e86b866c97a70ace8131c492500105e8f28bf99afd"
+    },
+    {
+      "path": "policies/roller_crouch.onnx",
+      "url": "https://huggingface.co/pollen-robotics/microduck-policies/resolve/088524a64e2557dc453256b6071dbb9d23888802/roller_crouch.onnx",
+      "sha256": "a1a084be240469c76ac9d3fa44d4792f16d4b1da60398b3ecd3cfc5e2244d990"
+    },
+    {
+      "path": "policies/roulade.onnx",
+      "url": "https://huggingface.co/pollen-robotics/microduck-policies/resolve/088524a64e2557dc453256b6071dbb9d23888802/roulade.onnx",
+      "sha256": "3d60da08fc13f29c1b57f41977aa898132c0d60042100149d8e775affcbca32b"
     }
   ]
 }

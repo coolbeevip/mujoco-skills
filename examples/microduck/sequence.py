@@ -14,6 +14,7 @@ from runtime import DT, Runtime
 
 @dataclass
 class Sample:
+    # 单个物理步的测量：位置单位为米，yaw 航向角与 tilt 倾角单位为弧度。
     step: int
     x: float
     y: float
@@ -36,6 +37,7 @@ class Monitor:
         self._check(initial)
 
     def fail(self, reason):
+        # 保留首次失败原因；后续恢复姿态不会撤销已经发生的失败。
         self.reason = self.reason or reason
         raise Failure(self.reason)
 
@@ -53,6 +55,7 @@ class Monitor:
         self._check(sample)
         if sample.step != self.previous.step + 1:
             self.fail("missing physics sample")
+        # atan2 的航向在 ±π 处跳变；累加最短角差得到连续转角。
         delta = math.atan2(
             math.sin(sample.yaw - self.previous.yaw),
             math.cos(sample.yaw - self.previous.yaw),
@@ -62,6 +65,7 @@ class Monitor:
             if self.tilt_start is None:
                 self.tilt_start = sample.step
             if sample.step - self.tilt_start >= 40:
+                # 40 个 5 ms 间隔等于 0.2 s；倾角回到阈值内则重新计时。
                 self.fail("torso tilt >45deg for >=0.2s")
         else:
             self.tilt_start = None
@@ -74,10 +78,16 @@ class Measurement:
         model = runtime.model
         self.root = model.body("trunk_base").id
         self.floor = model.geom("floor").id
-        self.feet = {
-            model.geom(n).id for n in ("left_foot_collision", "right_foot_collision")
-        }
+        self.feet = (
+            set()
+            if getattr(runtime, "mode", "walk") == "roller"
+            else {
+                model.geom(n).id
+                for n in ("left_foot_collision", "right_foot_collision")
+            }
+        )
         self.parts = {}
+        # 仅收集能与地面碰撞的躯干、头部几何体，足部接触不计为跌倒。
         for body, label in [("trunk_base", "torso"), ("jaw_soft", "head")]:
             bid = model.body(body).id
             ids = {
@@ -99,6 +109,8 @@ class Measurement:
         if not all(math.isfinite(float(v)) for v in rotation.flat):
             raise Failure("invalid torso rotation")
         yaw = math.atan2(rotation[1, 0], rotation[0, 0])
+        # 躯干局部 Z 轴与世界 Z 轴的点积为 rotation[2, 2]。
+        # 截断到 [-1, 1]，避免浮点误差让 acos 超出定义域。
         tilt = math.acos(max(-1.0, min(1.0, float(rotation[2, 2]))))
         contact = None
         for c in data.contact:
@@ -125,6 +137,7 @@ class Sequence:
         self._begin()
 
     def _begin(self):
+        # 每阶段单独记录起点；最终站稳的漂移相对于最终窗口起点计算。
         self.start = self.current
         self.start_yaw = self.monitor.yaw
         self.metrics = dict(
@@ -142,12 +155,14 @@ class Sequence:
         dx, dy = self.current.x - self.start.x, self.current.y - self.start.y
         heading = self.start_yaw
         angle = math.degrees(yaw - self.start_yaw)
+        # 将世界坐标位移投影到阶段起始朝向，分别得到前向距离和左向偏移。
         self.metrics.update(
             duration_s=(self.current.step - self.start.step) * DT,
             forward_m=dx * math.cos(heading) + dy * math.sin(heading),
             lateral_m=-dx * math.sin(heading) + dy * math.cos(heading),
             turn_deg=angle,
         )
+        # 记录全窗口最大偏差，而非只看终点，避免越界后返回被判为通过。
         self.metrics["max_displacement_m"] = max(
             self.metrics["max_displacement_m"], math.hypot(dx, dy)
         )
@@ -161,6 +176,7 @@ class Sequence:
                 self.monitor.fail("standing yaw deviation >10deg")
 
     def run(self):
+        # 结果缓存让重复调用只返回已完成的报告，不继续推进物理状态。
         if self.result is not None:
             return self.result
         try:
@@ -173,6 +189,7 @@ class Sequence:
                     else (0, 0, 0)
                 )
                 self.runtime.step(command, observer=self.observe)
+                # 监测在每个物理步执行，阶段切换则在完整控制步结束后进行。
                 elapsed = self.current.step - self.start.step
                 if self.index in (1, 2):
                     reached = (
@@ -181,6 +198,7 @@ class Sequence:
                         else self.metrics["turn_deg"] >= 90
                     )
                     if elapsed > 2000 or (elapsed == 2000 and not reached):
+                        # 2000 个物理步即 10 s；恰好到期且达标仍可通过。
                         self.monitor.fail("stage timeout >10s budget")
                     complete = reached
                     if complete:
@@ -193,6 +211,7 @@ class Sequence:
                         if not low <= value <= high:
                             self.monitor.fail("handoff outside target tolerance")
                 else:
+                    # 减速持续 3 s（600 步），两个站立窗口各 5 s（1000 步）。
                     complete = elapsed >= (600 if self.index == 3 else 1000)
                 if complete:
                     self.records.append(self.record("passed"))
@@ -251,12 +270,14 @@ def run_group(cache=DEFAULT_CACHE):
     try:
         runtime = Runtime(cache, seed=0)
         for _ in range(3):
+            # 每次从同一状态重新开始；三次全部通过才算整组通过。
             runtime.reset()
             initial = runtime.snapshot()
             result = Sequence(runtime).run()
             result["initial_state"] = initial
             report["runs"].append(result)
             if result["status"] != "passed":
+                # 任一次失败立即结束本组，剩余轮次明确标记为未执行。
                 report["status"] = result["status"]
                 report["runs"].extend(
                     [{"status": "not_executed"} for _ in range(3 - len(report["runs"]))]

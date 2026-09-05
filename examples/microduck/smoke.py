@@ -18,11 +18,13 @@ def smoke(cache=DEFAULT_CACHE):
     for _ in range(3):
         initial = runtime.reset()
         trace = []
+        # 控制频率为 50 Hz：前 250 步站立，后 250 步给低速前进指令。
         for tick in range(500):
             state = runtime.step((0, 0, 0) if tick < 250 else (0.1, 0, 0))
             trace.append(state["qpos"] + state["qvel"])
         traces.append(np.asarray(trace))
         runs.append({"initial": initial, "final": state})
+    # 逐控制步比较完整 qpos/qvel 轨迹，验证重置后的可重复性，而非动作达标。
     error = max(float(np.max(np.abs(t - traces[0]))) for t in traces[1:])
     if error > 1e-10:
         raise ValueError(f"reset reproducibility failed: {error}")
