@@ -13,3 +13,4 @@ htmlcov/
 *.egg-info/
 *.sock
 .idea/
+/team-spec/
