@@ -1,0 +1,551 @@
+{
+  "status": "passed",
+  "platform": "macOS-15.7.3-arm64-arm-64bit",
+  "python": "3.12.12",
+  "seed": 0,
+  "model_revision": "29e887ecfbf5d37144759e5a9f8a176dfb83d547",
+  "policy_revision": "088524a64e2557dc453256b6071dbb9d23888802",
+  "bam_revision": "62bd8ce12154340be97e06f7f41a0ca8f116d967",
+  "dependencies": {
+    "numpy": "2.3.2",
+    "mujoco": "3.7.0",
+    "onnxruntime": "1.23.2",
+    "better-actuator-models": "1.0.1"
+  },
+  "runs": [
+    {
+      "status": "passed",
+      "stages": [
+        {
+          "stage": "initial_stand",
+          "status": "passed",
+          "start_step": 0,
+          "end_step": 1000,
+          "start_position_m": [
+            0,
+            0
+          ],
+          "end_position_m": [
+            0.0023718857218589197,
+            -0.00007750735658980577
+          ],
+          "start_yaw_deg": 0,
+          "measurement_valid": true,
+          "duration_s": 5,
+          "forward_m": 0.0023718857218589197,
+          "lateral_m": -0.00007750735658980577,
+          "turn_deg": 1.5281195741416556,
+          "max_displacement_m": 0.003913018349629721,
+          "max_yaw_deviation_deg": 1.5281195741416556
+        },
+        {
+          "stage": "forward",
+          "status": "passed",
+          "start_step": 1000,
+          "end_step": 1644,
+          "start_position_m": [
+            0.0023718857218589197,
+            -0.00007750735658980577
+          ],
+          "end_position_m": [
+            0.3040334231427397,
+            -0.013496846234616035
+          ],
+          "start_yaw_deg": 1.5281195741416556,
+          "measurement_valid": true,
+          "duration_s": 3.22,
+          "forward_m": 0.3011963927804531,
+          "lateral_m": -0.021459142366267937,
+          "turn_deg": -8.13939162666375,
+          "max_displacement_m": 0.3019598678881893,
+          "max_yaw_deviation_deg": 13.886187335461573
+        },
+        {
+          "stage": "left_turn",
+          "status": "passed",
+          "start_step": 1644,
+          "end_step": 2228,
+          "start_position_m": [
+            0.3040334231427397,
+            -0.013496846234616035
+          ],
+          "end_position_m": [
+            0.33182212936735783,
+            0.006727990211289905
+          ],
+          "start_yaw_deg": -6.611272052522094,
+          "measurement_valid": true,
+          "duration_s": 2.92,
+          "forward_m": 0.025275377482053545,
+          "lateral_m": 0.023289729411083277,
+          "turn_deg": 90.07052639149026,
+          "max_displacement_m": 0.03956705155966265,
+          "max_yaw_deviation_deg": 90.07052639149026
+        },
+        {
+          "stage": "decelerate",
+          "status": "passed",
+          "start_step": 2228,
+          "end_step": 2828,
+          "start_position_m": [
+            0.33182212936735783,
+            0.006727990211289905
+          ],
+          "end_position_m": [
+            0.31837663751072964,
+            0.007341132152025648
+          ],
+          "start_yaw_deg": 83.45925433896818,
+          "measurement_valid": true,
+          "duration_s": 3,
+          "forward_m": -0.0009224216846803651,
+          "lateral_m": 0.013427819351695777,
+          "turn_deg": -1.792637549185713,
+          "max_displacement_m": 0.01952750982337782,
+          "max_yaw_deviation_deg": 3.4875210878558573
+        },
+        {
+          "stage": "final_stand",
+          "status": "passed",
+          "start_step": 2828,
+          "end_step": 3828,
+          "start_position_m": [
+            0.31837663751072964,
+            0.007341132152025648
+          ],
+          "end_position_m": [
+            0.3185245249730451,
+            0.007051809093803763
+          ],
+          "start_yaw_deg": 81.66661678978247,
+          "measurement_valid": true,
+          "duration_s": 5,
+          "forward_m": -0.00026483451204290274,
+          "lateral_m": -0.00018825837235027142,
+          "turn_deg": 0.017210313393790012,
+          "max_displacement_m": 0.00032758526863739524,
+          "max_yaw_deviation_deg": 0.017219533132572653
+        }
+      ],
+      "initial_state": {
+        "time_s": 0,
+        "control_steps": 0,
+        "physics_steps": 0,
+        "position_m": [
+          0,
+          0,
+          0.125
+        ],
+        "quaternion_wxyz": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "qpos": [
+          0,
+          0,
+          0.125,
+          1,
+          0,
+          0,
+          0,
+          0,
+          -0.08730000257492065,
+          -0.4578999876976013,
+          -0.004900000058114529,
+          0.453000009059906,
+          0.3490999937057495,
+          0.3490999937057495,
+          0,
+          0,
+          0,
+          0.08730000257492065,
+          0.4578999876976013,
+          0.004900000058114529,
+          -0.453000009059906
+        ],
+        "qvel": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "policy": "standing",
+        "fall_verdict": "not_implemented"
+      }
+    },
+    {
+      "status": "passed",
+      "stages": [
+        {
+          "stage": "initial_stand",
+          "status": "passed",
+          "start_step": 0,
+          "end_step": 1000,
+          "start_position_m": [
+            0,
+            0
+          ],
+          "end_position_m": [
+            0.0023718857218589197,
+            -0.00007750735658980577
+          ],
+          "start_yaw_deg": 0,
+          "measurement_valid": true,
+          "duration_s": 5,
+          "forward_m": 0.0023718857218589197,
+          "lateral_m": -0.00007750735658980577,
+          "turn_deg": 1.5281195741416556,
+          "max_displacement_m": 0.003913018349629721,
+          "max_yaw_deviation_deg": 1.5281195741416556
+        },
+        {
+          "stage": "forward",
+          "status": "passed",
+          "start_step": 1000,
+          "end_step": 1644,
+          "start_position_m": [
+            0.0023718857218589197,
+            -0.00007750735658980577
+          ],
+          "end_position_m": [
+            0.3040334231427397,
+            -0.013496846234616035
+          ],
+          "start_yaw_deg": 1.5281195741416556,
+          "measurement_valid": true,
+          "duration_s": 3.22,
+          "forward_m": 0.3011963927804531,
+          "lateral_m": -0.021459142366267937,
+          "turn_deg": -8.13939162666375,
+          "max_displacement_m": 0.3019598678881893,
+          "max_yaw_deviation_deg": 13.886187335461573
+        },
+        {
+          "stage": "left_turn",
+          "status": "passed",
+          "start_step": 1644,
+          "end_step": 2228,
+          "start_position_m": [
+            0.3040334231427397,
+            -0.013496846234616035
+          ],
+          "end_position_m": [
+            0.33182212936735783,
+            0.006727990211289905
+          ],
+          "start_yaw_deg": -6.611272052522094,
+          "measurement_valid": true,
+          "duration_s": 2.92,
+          "forward_m": 0.025275377482053545,
+          "lateral_m": 0.023289729411083277,
+          "turn_deg": 90.07052639149026,
+          "max_displacement_m": 0.03956705155966265,
+          "max_yaw_deviation_deg": 90.07052639149026
+        },
+        {
+          "stage": "decelerate",
+          "status": "passed",
+          "start_step": 2228,
+          "end_step": 2828,
+          "start_position_m": [
+            0.33182212936735783,
+            0.006727990211289905
+          ],
+          "end_position_m": [
+            0.31837663751072964,
+            0.007341132152025648
+          ],
+          "start_yaw_deg": 83.45925433896818,
+          "measurement_valid": true,
+          "duration_s": 3,
+          "forward_m": -0.0009224216846803651,
+          "lateral_m": 0.013427819351695777,
+          "turn_deg": -1.792637549185713,
+          "max_displacement_m": 0.01952750982337782,
+          "max_yaw_deviation_deg": 3.4875210878558573
+        },
+        {
+          "stage": "final_stand",
+          "status": "passed",
+          "start_step": 2828,
+          "end_step": 3828,
+          "start_position_m": [
+            0.31837663751072964,
+            0.007341132152025648
+          ],
+          "end_position_m": [
+            0.3185245249730451,
+            0.007051809093803763
+          ],
+          "start_yaw_deg": 81.66661678978247,
+          "measurement_valid": true,
+          "duration_s": 5,
+          "forward_m": -0.00026483451204290274,
+          "lateral_m": -0.00018825837235027142,
+          "turn_deg": 0.017210313393790012,
+          "max_displacement_m": 0.00032758526863739524,
+          "max_yaw_deviation_deg": 0.017219533132572653
+        }
+      ],
+      "initial_state": {
+        "time_s": 0,
+        "control_steps": 0,
+        "physics_steps": 0,
+        "position_m": [
+          0,
+          0,
+          0.125
+        ],
+        "quaternion_wxyz": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "qpos": [
+          0,
+          0,
+          0.125,
+          1,
+          0,
+          0,
+          0,
+          0,
+          -0.08730000257492065,
+          -0.4578999876976013,
+          -0.004900000058114529,
+          0.453000009059906,
+          0.3490999937057495,
+          0.3490999937057495,
+          0,
+          0,
+          0,
+          0.08730000257492065,
+          0.4578999876976013,
+          0.004900000058114529,
+          -0.453000009059906
+        ],
+        "qvel": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "policy": "standing",
+        "fall_verdict": "not_implemented"
+      }
+    },
+    {
+      "status": "passed",
+      "stages": [
+        {
+          "stage": "initial_stand",
+          "status": "passed",
+          "start_step": 0,
+          "end_step": 1000,
+          "start_position_m": [
+            0,
+            0
+          ],
+          "end_position_m": [
+            0.0023718857218589197,
+            -0.00007750735658980577
+          ],
+          "start_yaw_deg": 0,
+          "measurement_valid": true,
+          "duration_s": 5,
+          "forward_m": 0.0023718857218589197,
+          "lateral_m": -0.00007750735658980577,
+          "turn_deg": 1.5281195741416556,
+          "max_displacement_m": 0.003913018349629721,
+          "max_yaw_deviation_deg": 1.5281195741416556
+        },
+        {
+          "stage": "forward",
+          "status": "passed",
+          "start_step": 1000,
+          "end_step": 1644,
+          "start_position_m": [
+            0.0023718857218589197,
+            -0.00007750735658980577
+          ],
+          "end_position_m": [
+            0.3040334231427397,
+            -0.013496846234616035
+          ],
+          "start_yaw_deg": 1.5281195741416556,
+          "measurement_valid": true,
+          "duration_s": 3.22,
+          "forward_m": 0.3011963927804531,
+          "lateral_m": -0.021459142366267937,
+          "turn_deg": -8.13939162666375,
+          "max_displacement_m": 0.3019598678881893,
+          "max_yaw_deviation_deg": 13.886187335461573
+        },
+        {
+          "stage": "left_turn",
+          "status": "passed",
+          "start_step": 1644,
+          "end_step": 2228,
+          "start_position_m": [
+            0.3040334231427397,
+            -0.013496846234616035
+          ],
+          "end_position_m": [
+            0.33182212936735783,
+            0.006727990211289905
+          ],
+          "start_yaw_deg": -6.611272052522094,
+          "measurement_valid": true,
+          "duration_s": 2.92,
+          "forward_m": 0.025275377482053545,
+          "lateral_m": 0.023289729411083277,
+          "turn_deg": 90.07052639149026,
+          "max_displacement_m": 0.03956705155966265,
+          "max_yaw_deviation_deg": 90.07052639149026
+        },
+        {
+          "stage": "decelerate",
+          "status": "passed",
+          "start_step": 2228,
+          "end_step": 2828,
+          "start_position_m": [
+            0.33182212936735783,
+            0.006727990211289905
+          ],
+          "end_position_m": [
+            0.31837663751072964,
+            0.007341132152025648
+          ],
+          "start_yaw_deg": 83.45925433896818,
+          "measurement_valid": true,
+          "duration_s": 3,
+          "forward_m": -0.0009224216846803651,
+          "lateral_m": 0.013427819351695777,
+          "turn_deg": -1.792637549185713,
+          "max_displacement_m": 0.01952750982337782,
+          "max_yaw_deviation_deg": 3.4875210878558573
+        },
+        {
+          "stage": "final_stand",
+          "status": "passed",
+          "start_step": 2828,
+          "end_step": 3828,
+          "start_position_m": [
+            0.31837663751072964,
+            0.007341132152025648
+          ],
+          "end_position_m": [
+            0.3185245249730451,
+            0.007051809093803763
+          ],
+          "start_yaw_deg": 81.66661678978247,
+          "measurement_valid": true,
+          "duration_s": 5,
+          "forward_m": -0.00026483451204290274,
+          "lateral_m": -0.00018825837235027142,
+          "turn_deg": 0.017210313393790012,
+          "max_displacement_m": 0.00032758526863739524,
+          "max_yaw_deviation_deg": 0.017219533132572653
+        }
+      ],
+      "initial_state": {
+        "time_s": 0,
+        "control_steps": 0,
+        "physics_steps": 0,
+        "position_m": [
+          0,
+          0,
+          0.125
+        ],
+        "quaternion_wxyz": [
+          1,
+          0,
+          0,
+          0
+        ],
+        "qpos": [
+          0,
+          0,
+          0.125,
+          1,
+          0,
+          0,
+          0,
+          0,
+          -0.08730000257492065,
+          -0.4578999876976013,
+          -0.004900000058114529,
+          0.453000009059906,
+          0.3490999937057495,
+          0.3490999937057495,
+          0,
+          0,
+          0,
+          0.08730000257492065,
+          0.4578999876976013,
+          0.004900000058114529,
+          -0.453000009059906
+        ],
+        "qvel": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "policy": "standing",
+        "fall_verdict": "not_implemented"
+      }
+    }
+  ]
+}

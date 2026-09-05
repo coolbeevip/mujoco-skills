@@ -1,0 +1,286 @@
+{
+  "schema_version": 1,
+  "status": "headless_and_keyboard_verified",
+  "full_rl_environment": false,
+  "assets": "assets.lock.json",
+  "versions": {
+    "python": "3.12.12",
+    "numpy": "2.3.2",
+    "mujoco": "3.7.0",
+    "onnxruntime": "1.23.2",
+    "bam": "1.0.1",
+    "bam_commit": "62bd8ce12154340be97e06f7f41a0ca8f116d967"
+  },
+  "timing": {
+    "physics_dt_s": 0.005,
+    "control_dt_s": 0.02,
+    "physics_steps_per_control": 4
+  },
+  "joints_and_actuators": [
+    "left_hip_yaw",
+    "left_hip_roll",
+    "left_hip_pitch",
+    "left_knee",
+    "left_ankle",
+    "neck_pitch",
+    "head_pitch",
+    "head_yaw",
+    "head_roll",
+    "right_hip_yaw",
+    "right_hip_roll",
+    "right_hip_pitch",
+    "right_knee",
+    "right_ankle"
+  ],
+  "initialization": {
+    "seed": 0,
+    "randomization": false,
+    "root_joint": "trunk_base_freejoint",
+    "root_position_m": [
+      0,
+      0,
+      0.125
+    ],
+    "root_quaternion_wxyz": [
+      1,
+      0,
+      0,
+      0
+    ],
+    "joint_position_rad": [
+      0,
+      -0.0873,
+      -0.4579,
+      -0.0049,
+      0.453,
+      0.3491,
+      0.3491,
+      0,
+      0,
+      0,
+      0.0873,
+      0.4579,
+      0.0049,
+      -0.453
+    ],
+    "all_velocities": 0,
+    "previous_action": 0,
+    "warmup_steps": 0,
+    "reset": "rebuild MuJoCo model/data and BAM controller; clear mutable friction and all controller history"
+  },
+  "command": {
+    "order": [
+      "body_vx_m_s",
+      "body_vy_m_s",
+      "yaw_rate_rad_s"
+    ],
+    "absolute_limits": [
+      0.5,
+      0.3,
+      1.5
+    ],
+    "standing_switch": "Euclidean norm <= 0.05; twist zeroed",
+    "head_pose": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "body_pose": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "observation": {
+    "shape": [
+      1,
+      61
+    ],
+    "dtype": "float32",
+    "normalization": "baked into pinned ONNX graph; raw input only",
+    "slices": [
+      {
+        "start": 0,
+        "end": 3,
+        "name": "imu_ang_vel",
+        "unit": "rad/s",
+        "frame": "IMU local"
+      },
+      {
+        "start": 3,
+        "end": 6,
+        "name": "projected_gravity",
+        "unit": "unit vector",
+        "frame": "trunk local"
+      },
+      {
+        "start": 6,
+        "end": 20,
+        "name": "joint_pos_minus_default",
+        "unit": "rad"
+      },
+      {
+        "start": 20,
+        "end": 34,
+        "name": "joint_vel",
+        "unit": "rad/s"
+      },
+      {
+        "start": 34,
+        "end": 48,
+        "name": "previous_policy_action",
+        "unit": "rad offset, scale 1"
+      },
+      {
+        "start": 48,
+        "end": 51,
+        "name": "twist",
+        "unit": "m/s,m/s,rad/s"
+      },
+      {
+        "start": 51,
+        "end": 55,
+        "name": "head_pose",
+        "unit": "rad",
+        "value": 0
+      },
+      {
+        "start": 55,
+        "end": 61,
+        "name": "body_pose",
+        "unit": "m,m,m,rad,rad,rad",
+        "value": 0
+      }
+    ]
+  },
+  "action": {
+    "shape": [
+      1,
+      14
+    ],
+    "dtype": "float32",
+    "mapping": "target_rad = default_pose + raw_action * 1.0",
+    "actuator": "BAM xl330 m6",
+    "actuator_units": "Nm",
+    "vin": 7.4,
+    "kp_fw": 200,
+    "vin_drop_gain": 0.1,
+    "vin_min": 6,
+    "current_limit": null,
+    "approximation": "nominal fixed voltage; no training randomization or artificial actuation delay"
+  },
+  "measurement_candidates": {
+    "root_body": "trunk_base",
+    "torso_body": "trunk_base",
+    "torso_vertical_local": [
+      0,
+      0,
+      1
+    ],
+    "head_body": "jaw_soft",
+    "feet_bodies": [
+      "ankle_left",
+      "ankle_right"
+    ],
+    "foot_geoms": [
+      "left_foot_collision",
+      "right_foot_collision"
+    ],
+    "ground_geom": "floor",
+    "torso_ground_collision_geom_ids": [
+      9
+    ],
+    "head_ground_collision_geom_ids": [
+      49,
+      56,
+      58
+    ],
+    "collision_geometry_present": true,
+    "actual_ground_contact_detection_verified": true,
+    "fall_verdict": "Sequence reports passed/failed; raw Runtime snapshot has no detector",
+    "warning": "Geometry IDs apply only to hash-locked scene; real head/torso and foot contact tests pass."
+  },
+  "verification": {
+    "file": "verification.json",
+    "repeats": 3,
+    "duration_per_run_s": 10,
+    "state_tolerance": 1e-10,
+    "scope": "finite CPU loop and reset reproducibility only",
+    "linux": "not_tested",
+    "gui": "native window, real terminal keys, quit, public viewer.close event, startup error and terminal restoration verified",
+    "offline": {
+      "report": "offline-verification.json",
+      "method": "macOS sandbox-exec deny network*",
+      "headless": true,
+      "keyboard": true
+    }
+  },
+  "sequence": {
+    "entry": "sequence.py",
+    "report": "sequence-verification.json",
+    "seed": 0,
+    "repeats": 3,
+    "forward_command_m_s": 0.3,
+    "turn_command_rad_s": 1.2,
+    "measurement_dt_s": 0.005,
+    "handoff_dt_s": 0.02,
+    "stand_duration_s": 5,
+    "stand_max_displacement_m": 0.05,
+    "stand_max_yaw_deg": 10,
+    "forward_target_m": 0.3,
+    "forward_tolerance_m": 0.1,
+    "left_turn_target_deg": 90,
+    "left_turn_tolerance_deg": 15,
+    "motion_timeout_s": 10,
+    "decelerate_duration_s": 3,
+    "tilt_threshold_deg": 45,
+    "tilt_continuous_s": 0.2,
+    "tilt_sampling": "duration since first observed high sample; <=45 resets",
+    "position": "projection onto stage-start heading; leftward lateral displacement",
+    "yaw": "continuous atan2 unwrap; left positive",
+    "failure": "latch and stop group, remaining runs not_executed"
+  },
+  "keyboard": {
+    "entry_macos": "mjpython keyboard.py",
+    "focus": "launching terminal",
+    "case": "lowercase only",
+    "keys": {
+      "w": [
+        0.3,
+        0,
+        0
+      ],
+      "a": [
+        0,
+        0,
+        1.2
+      ],
+      "d": [
+        0,
+        0,
+        -1.2
+      ],
+      "s": [
+        0,
+        0,
+        0
+      ],
+      "space": [
+        0,
+        0,
+        0
+      ],
+      "q": "exit"
+    },
+    "release_behavior": "latched until next recognized key",
+    "unknown_keys": "ignored",
+    "rendering": "one-way model/data copy; viewer cannot alter authoritative physics",
+    "on_fall": "stop with nonzero exit; no automatic recovery",
+    "report": "keyboard-verification.json",
+    "render_headless_trace_identical": true
+  }
+}
