@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "cpu_smoke_only",
+  "status": "headless_sequence_verified",
   "full_rl_environment": false,
   "assets": "assets.lock.json",
   "versions": {
@@ -200,9 +200,9 @@
       58
     ],
     "collision_geometry_present": true,
-    "actual_ground_contact_detection_verified": false,
-    "fall_verdict": "not_implemented",
-    "warning": "numeric IDs only apply to hash-locked scene; physical contact detector and tilt tests remain T002"
+    "actual_ground_contact_detection_verified": true,
+    "fall_verdict": "Sequence reports passed/failed; raw Runtime snapshot has no detector",
+    "warning": "Geometry IDs apply only to hash-locked scene; real head/torso and foot contact tests pass."
   },
   "verification": {
     "file": "verification.json",
@@ -212,5 +212,30 @@
     "scope": "finite CPU loop and reset reproducibility only",
     "linux": "not_tested",
     "gui": "not_implemented"
+  },
+  "sequence": {
+    "entry": "sequence.py",
+    "report": "sequence-verification.json",
+    "seed": 0,
+    "repeats": 3,
+    "forward_command_m_s": 0.3,
+    "turn_command_rad_s": 1.2,
+    "measurement_dt_s": 0.005,
+    "handoff_dt_s": 0.02,
+    "stand_duration_s": 5,
+    "stand_max_displacement_m": 0.05,
+    "stand_max_yaw_deg": 10,
+    "forward_target_m": 0.3,
+    "forward_tolerance_m": 0.1,
+    "left_turn_target_deg": 90,
+    "left_turn_tolerance_deg": 15,
+    "motion_timeout_s": 10,
+    "decelerate_duration_s": 3,
+    "tilt_threshold_deg": 45,
+    "tilt_continuous_s": 0.2,
+    "tilt_sampling": "duration since first observed high sample; <=45 resets",
+    "position": "projection onto stage-start heading; leftward lateral displacement",
+    "yaw": "continuous atan2 unwrap; left positive",
+    "failure": "latch and stop group, remaining runs not_executed"
   }
 }

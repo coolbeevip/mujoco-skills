@@ -155,6 +155,7 @@ class Runtime:
         self.controller.reset(self.data.qpos)
         self.last_action = np.zeros(14, dtype=np.float32)
         self.ticks = 0
+        self.physics_steps = 0
         self.failed = False
         self.active_policy = "standing"
         mujoco.mj_forward(self.model, self.data)
@@ -185,7 +186,7 @@ class Runtime:
         self.controller.q_target[:] = targets
         self.last_action = action
 
-    def step(self, velocity=(0, 0, 0)):
+    def step(self, velocity=(0, 0, 0), observer=None):
         command = vector(velocity, 3, "velocity")
         if self.failed:
             raise ValueError("runtime failed; explicit reset required")
@@ -211,6 +212,7 @@ class Runtime:
                 self.failed = True
                 raise ValueError("invalid actuator torque")
             mujoco.mj_step(self.model, self.data)
+            self.physics_steps += 1
             if (
                 not np.isfinite(self.data.qpos).all()
                 or not np.isfinite(self.data.qvel).all()
@@ -218,6 +220,13 @@ class Runtime:
             ):
                 self.failed = True
                 raise ValueError("invalid physics state or MuJoCo warning")
+            mujoco.mj_forward(self.model, self.data)
+            if observer is not None:
+                try:
+                    observer(self)
+                except (Exception, KeyboardInterrupt):
+                    self.failed = True
+                    raise
         self.ticks += 1
         mujoco.mj_forward(self.model, self.data)
         return self.snapshot()
@@ -226,6 +235,7 @@ class Runtime:
         state = {
             "time_s": float(self.data.time),
             "control_steps": self.ticks,
+            "physics_steps": self.physics_steps,
             "position_m": self.data.xpos[self.root_id].tolist(),
             "quaternion_wxyz": self.data.xquat[self.root_id].tolist(),
             "qpos": self.data.qpos.tolist(),
