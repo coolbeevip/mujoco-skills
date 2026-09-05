@@ -1,8 +1,8 @@
 # MicroDuck CPU 场景样例
 
-面向希望在本机运行 MicroDuck 的开发者：显式获取官方模型与预训练权重，使用 MuJoCo、ONNX Runtime 和 BAM 电机模型运行无窗口短闭环，无需 CUDA 或自行训练。
+面向希望在本机运行 MicroDuck 的开发者：显式获取官方模型与预训练权重，使用 MuJoCo、ONNX Runtime 和 BAM 电机模型完成无窗口动作验证或键盘控制，无需 CUDA 或自行训练。
 
-当前已提供无窗口固定序列验证：站立、前进、左转、减速和最终站稳。键盘窗口入口尚未实现。`sequence.py` 的 `passed` 表示完整序列通过；`smoke_passed` 仍只表示基础短闭环和重置重复性通过。
+两个入口共用物理控制核心：`sequence.py` 自动验证站立、前进、左转、减速和最终站稳；`keyboard.py` 提供真实场景窗口与终端按键控制。`sequence.py` 的 `passed` 表示完整序列通过；键盘正常退出为 `stopped`，不冒充自动验收成功。
 
 ## 快速开始
 
@@ -19,9 +19,32 @@ python assets.py prepare
 python sequence.py
 ```
 
-成功时退出码为 0，JSON 中包含：
+成功时退出码为 0；JSON 包含总体 `status: passed`、三个 `runs` 以及每阶段测量。任一次失败返回非零，保留失败原因，剩余轮次标为 `not_executed`，不筛选成功结果。
 
-完整 JSON 包含总体 `status: passed`、三个 `runs` 以及每阶段测量。任一次失败返回非零，保留失败原因，剩余轮次标为 `not_executed`，不筛选成功结果。
+然后启动键盘体验（保持虚拟环境激活，在同一终端执行）：
+
+```sh
+mjpython keyboard.py
+```
+
+macOS 的 MuJoCo 窗口必须通过安装依赖时生成的 `mjpython` 启动，不能替换为普通 `python`。Linux 尽力兼容但未实测，不列为通过平台。
+
+## 键盘操作
+
+请把输入焦点放在**启动程序的终端**，不是 MuJoCo 窗口。使用小写按键：
+
+| 按键 | 指令 |
+| --- | --- |
+| `w` | 前进（0.3 m/s） |
+| `a` / `d` | 左转 / 右转（±1.2 rad/s） |
+| 空格 / `s` | 停止运动指令，站立平衡 |
+| `q` | 正常退出 |
+
+每次按键替换完整指令；**松键不会停止**，指令保持至下一次有效按键。未知键（含大写字母）忽略，不支持按住组合键。关闭窗口也会结束运行。Ctrl+C、跌倒或物理异常以非零状态终止，并恢复终端输入设置。
+
+鼠标可调整视图，但窗口只持有模型/数据副本，不会拖动物理机器人或修改实际控制参数。停止后允许平衡摆动，并不冻结关节。终端输出 `INPUT` 记录按键发生的物理状态；正常退出输出 `RESULT`（`status: stopped`）及轨迹摘要。键盘体验不是固定序列的替代验收。
+
+如提示 GUI 启动失败，检查是否使用 `mjpython`；无图形环境可运行 `python sequence.py`。如果输入无响应，先把焦点切回启动终端。
 
 ## 完整序列与判断方式
 
@@ -86,7 +109,18 @@ python -m pytest -q tests
 
 真实模型测试要求先完成 `assets.py prepare`，不跳过缺失资产。覆盖缓存错误、输入拒绝、原子控制更新、关节语义不匹配、精确步进、重置重复性、真实接触、阈值边界、阶段时限和失败锁存。无既有旧接口需要兼容。
 
-实测运行组合：Python 3.12.12、NumPy 2.3.2、MuJoCo 3.7.0、ONNX Runtime 1.23.2 CPUExecutionProvider、BAM 1.0.1（固定 Git 提交）。[verification.json](verification.json) 保存三次短闭环证据。依赖与资产准备完成后普通运行无需下载；操作系统级断网验收及 GUI 验收留待完整入口交付。
+实测运行组合：Python 3.12.12、NumPy 2.3.2、MuJoCo 3.7.0、ONNX Runtime 1.23.2 CPUExecutionProvider、BAM 1.0.1（固定 Git 提交）。[verification.json](verification.json) 保存短闭环证据，[keyboard-verification.json](keyboard-verification.json) 保存真实窗口按键记录；同一输入的无窗口重放与有窗口运行，全部 qpos/qvel 轨迹哈希完全一致。该精确轨迹回归只在 macOS arm64 执行，其他平台明确跳过。
+
+已使用 macOS `sandbox-exec` 对测试进程禁止所有网络操作，确认网络调用返回 PermissionError；两个入口仍可运行，见 [offline-verification.json](offline-verification.json)。隔离不改变整机网络配置。可在资产已准备后复现：
+
+```sh
+sandbox-exec -p '(version 1)(allow default)(deny network*)' python sequence.py
+sandbox-exec -p '(version 1)(allow default)(deny network*)' mjpython keyboard.py
+```
+
+以上是 macOS 专用验证命令，不是普通启动的必要条件。首次依赖安装和 `assets.py prepare` 不应放在禁网环境中。
+
+窗口关闭路径可用 `mjpython tests/gui_close_smoke.py` 复测：它打开真实窗口，约一秒后调用公开的 `viewer.close()`，检查正常退出和终端恢复。按键退出、启动失败和终端设置恢复也已验证；未依赖操作系统辅助功能权限自动点击关闭按钮。
 
 ## 来源与许可
 

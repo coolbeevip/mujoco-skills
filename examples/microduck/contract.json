@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "headless_sequence_verified",
+  "status": "headless_and_keyboard_verified",
   "full_rl_environment": false,
   "assets": "assets.lock.json",
   "versions": {
@@ -211,7 +211,13 @@
     "state_tolerance": 1e-10,
     "scope": "finite CPU loop and reset reproducibility only",
     "linux": "not_tested",
-    "gui": "not_implemented"
+    "gui": "native window, real terminal keys, quit, public viewer.close event, startup error and terminal restoration verified",
+    "offline": {
+      "report": "offline-verification.json",
+      "method": "macOS sandbox-exec deny network*",
+      "headless": true,
+      "keyboard": true
+    }
   },
   "sequence": {
     "entry": "sequence.py",
@@ -237,5 +243,44 @@
     "position": "projection onto stage-start heading; leftward lateral displacement",
     "yaw": "continuous atan2 unwrap; left positive",
     "failure": "latch and stop group, remaining runs not_executed"
+  },
+  "keyboard": {
+    "entry_macos": "mjpython keyboard.py",
+    "focus": "launching terminal",
+    "case": "lowercase only",
+    "keys": {
+      "w": [
+        0.3,
+        0,
+        0
+      ],
+      "a": [
+        0,
+        0,
+        1.2
+      ],
+      "d": [
+        0,
+        0,
+        -1.2
+      ],
+      "s": [
+        0,
+        0,
+        0
+      ],
+      "space": [
+        0,
+        0,
+        0
+      ],
+      "q": "exit"
+    },
+    "release_behavior": "latched until next recognized key",
+    "unknown_keys": "ignored",
+    "rendering": "one-way model/data copy; viewer cannot alter authoritative physics",
+    "on_fall": "stop with nonzero exit; no automatic recovery",
+    "report": "keyboard-verification.json",
+    "render_headless_trace_identical": true
   }
 }

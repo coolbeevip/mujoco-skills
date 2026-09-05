@@ -1,0 +1,55 @@
+{
+  "platform": "macOS 15.7.3 arm64",
+  "python": "3.12.12",
+  "isolation": "sandbox-exec -p '(version 1)(allow default)(deny network*)'",
+  "isolation_scope": "test process and children only; host network unchanged",
+  "denial_probe": {
+    "operation": "socket.socket() / connect to 1.1.1.1:443",
+    "outcome": "PermissionError [Errno 1] Operation not permitted",
+    "exit_code": 1
+  },
+  "headless": {
+    "command": "python sequence.py",
+    "exit_code": 0,
+    "status": "passed",
+    "runs": [
+      "passed",
+      "passed",
+      "passed"
+    ],
+    "report": "sequence-verification.json"
+  },
+  "keyboard": {
+    "command": "mjpython keyboard.py",
+    "exit_code": 0,
+    "status": "stopped",
+    "reason": "quit_key",
+    "control_steps": 4534,
+    "physics_steps": 18136,
+    "report": "keyboard-verification.json",
+    "window_visual_inspection": true
+  },
+  "render_parity": {
+    "headless_replay": "passed",
+    "trace_sha256": "743f5b3ec0b3d0ecb47f8efc003edc79c207788bb0c96ee398e416d6acf852c8"
+  },
+  "limits": [
+    "Linux not tested",
+    "This is fixed-state simulation verification, not training or real-robot validation",
+    "Native close-button click automation unavailable: macOS assistive access denied; equivalent viewer.close event verified"
+  ],
+  "gui_close": {
+    "method": "real native viewer.close() via timed public API; not an AX button click",
+    "command": "mjpython tests/gui_close_smoke.py",
+    "network_isolated": true,
+    "status": "stopped",
+    "reason": "window_closed",
+    "exit_code": 0,
+    "physics_steps": 176
+  },
+  "gui_start_failure": {
+    "command": "python keyboard.py",
+    "exit_code": 2,
+    "diagnostic": "use mjpython on macOS or python sequence.py"
+  }
+}
