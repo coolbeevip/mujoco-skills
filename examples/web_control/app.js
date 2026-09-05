@@ -3,8 +3,13 @@
 const $ = selector => document.querySelector(selector);
 let scenes = [], token = "", state = {}, busy = false, connected = false;
 let frameId = -1, frameUrl = "", lastError = "";
+let headFrameId = -1, headFrameUrl = "";
 let camera = { azimuth: 135, elevation: -20, distance: 0.85 };
 let sizeCandidate = "", sizeSince = 0, sizeAttempt = "";
+let historyKey = "";
+const taskPhases = { settling: "等待站稳", waiting: "停步观察", observing: "读取头部图像", thinking: "模型正在判断", moving: "执行移动", skill: "执行原子动作 / 恢复", confirming: "停止后再次观察", completed: "模型视觉确认完成", cancelled: "任务已中止", failed: "任务失败" };
+function taskActive() { return Boolean(state.navigation && !["completed", "cancelled", "failed"].includes(state.navigation.phase)); }
+taskPhases.head = "调整头部 / 重新观察";
 const stages = { idle: "平衡 / 移动", sitting: "坐下中", seated: "保持坐姿", rising: "站起中", executing: "执行动作", recovering: "恢复平衡" };
 
 function feedback(title, detail, mapping = "") {
@@ -40,13 +45,21 @@ async function request(path, body) {
 function controls() {
   const loaded = Boolean(state.scene);
   const matches = state.scene === $("#scene-select").value;
+  const active = taskActive();
+  $("#task-start").disabled = busy || !connected || !loaded || !matches || active || Boolean(state.error) || !state.model_config?.configured || !$("#task-input").value.trim();
+  $("#task-cancel").disabled = busy || !connected || !active;
+  $("#task-cancel-global").hidden = !active;
+  $("#task-cancel-global").disabled = busy || !connected;
+  $("#manual-task-note").hidden = !active;
+  $("#task-input").disabled = active;
+  $("#view-select").disabled = busy || !connected || !loaded;
   $("#load-scene").disabled = busy || !connected;
   $("#scene-select").disabled = busy || !connected;
   $("#pause").disabled = busy || !connected || !loaded || Boolean(state.error);
   $("#reset").disabled = busy || !connected || !loaded;
   $("#pause").textContent = state.paused ? "继续仿真" : "暂停仿真";
   document.querySelectorAll(".action-button").forEach(button => {
-    button.disabled = busy || !connected || !matches || state.paused || Boolean(state.error);
+    button.disabled = busy || !connected || !matches || state.paused || Boolean(state.error) || active;
   });
 }
 
@@ -57,6 +70,12 @@ function update(next) {
     frameId = -1;
     camera = { azimuth: 135, elevation: -20, distance: 0.85 };
     $("#live-frame").hidden = true;
+    $("#head-frame").hidden = true;
+    $("#head-frame").removeAttribute("src");
+    $("#head-stamp").hidden = true;
+    headFrameId = -1;
+    if (headFrameUrl) URL.revokeObjectURL(headFrameUrl);
+    headFrameUrl = "";
     sizeAttempt = "";
     $("#render-size").textContent = "等待画面";
   }
@@ -71,6 +90,39 @@ function update(next) {
   if (state.error && state.error !== lastError) feedback("仿真异常", state.error, "请重置场景");
   lastError = state.error;
   $("#runtime-note").textContent = state.error || explain(state.message || "请选择场景");
+  if (!state.scene || !state.head_frame_available) {
+    $("#head-status").hidden = false;
+    $("#head-status").textContent = state.scene ? "头部画面尚未就绪，请确认后端服务已重启" : "加载场景后显示头部画面";
+  }
+  $("#view-select").value = state.view || "external";
+  const head = state.view === "head";
+  $("#viewport").dataset.view = head ? "head" : "external";
+  $("#view-help").textContent = head ? "头部固定视角 · 随机器人运动" : "拖动后松开旋转 · 滚轮缩放";
+  $("#viewport").setAttribute("aria-label", head ? "机器人头部摄像头画面" : "仿真画面；拖动旋转，滚轮缩放；键盘左右键旋转，加减键缩放");
+  const config = state.model_config;
+  $("#model-status").textContent = config?.configured ? `${config.provider} / ${config.model} · 开始任务后向该服务发送任务、头部图像及决策历史` : "尚未配置模型：在服务端设置 VLM_PROVIDER 和 VLM_MODEL 后重启服务。密钥仅在本机配置。";
+  const navigation = state.navigation;
+  $("#task-phase").textContent = navigation ? (taskPhases[navigation.phase] || navigation.phase) : "未开始";
+  $("#task-reason").textContent = navigation ? `${navigation.task}：${navigation.reason}` : "尚无模型观察结果";
+  const history = navigation?.history || [];
+  $("#task-count").textContent = `${history.length} 条`;
+  const key = JSON.stringify(history);
+  if (key !== historyKey) {
+    historyKey = key;
+    // 模型文本是不可信输入，只作为文字显示，绝不解析成 HTML 或代码。
+    // 仅将展示顺序倒置，不改变状态中的历史顺序和原始观察编号。
+    $("#task-history").replaceChildren(...[...history].reverse().map(item => {
+      const row = document.createElement("li");
+      const description = describeDecision(item);
+      for (const [key, tag] of [["title", "strong"], ["evidence", "p"], ["result", "p"], ["assessment", "small"]]) {
+        const line = document.createElement(tag);
+        line.className = `decision-${key}`;
+        line.textContent = description[key];
+        row.append(line);
+      }
+      return row;
+    }));
+  }
   controls();
 }
 
@@ -113,6 +165,40 @@ $("#live-frame").addEventListener("load", () => {
   $("#render-size").textContent = `${image.naturalWidth} × ${image.naturalHeight}`;
 });
 
+$(".camera-pip").addEventListener("toggle", () => {
+  // 重新展开时获取最新帧；折叠只停止下载小窗图像，不影响仿真与视觉任务。
+  if ($(".camera-pip").open) headFrameId = -1;
+});
+
+async function refreshHeadFrame() {
+  if (!state.scene || !state.head_frame_available || !$(".camera-pip").open || headFrameId === state.frame_id) return;
+  const generation = state.generation;
+  try {
+    const response = await fetch(`/api/head-frame?id=${state.frame_id}`, { cache: "no-store", signal: AbortSignal.timeout(3000) });
+    if (!response.ok) throw new Error("头部画面读取失败");
+    const blob = await response.blob();
+    // 换场景期间迟到的图像直接丢弃，不能盖住新场景的小窗。
+    if (generation !== state.generation || Number(response.headers.get("X-Scene-Generation")) !== generation) return;
+    const url = URL.createObjectURL(blob);
+    const image = $("#head-frame");
+    const previous = headFrameUrl;
+    image.src = url;
+    headFrameUrl = url;
+    if (previous) URL.revokeObjectURL(previous);
+    image.hidden = false;
+    $("#head-status").hidden = true;
+    headFrameId = Number(response.headers.get("X-Frame-Id"));
+    $("#head-stamp").textContent = `HEAD / 640 × 360 · 帧 ${headFrameId}`;
+    $("#head-stamp").hidden = false;
+  } catch (error) {
+    if (generation !== state.generation) return;
+    $("#head-frame").hidden = true;
+    $("#head-stamp").hidden = true;
+    $("#head-status").hidden = false;
+    $("#head-status").textContent = `${error.message}，正在重试`;
+  }
+}
+
 function actionButton(action) {
   const button = document.createElement("button");
   button.type = "button";
@@ -123,7 +209,8 @@ function actionButton(action) {
   const key = document.createElement("kbd");
   key.textContent = action.key.toUpperCase();
   key.setAttribute("aria-label", `对应终端按键 ${action.key}`);
-  button.append(label, key);
+  button.append(label);
+  if (action.key) button.append(key);
   // 页面只发送动作 ID。服务端将 forward 映射为 w，再交给 Behaviors；
   // 浏览器不计算关节角，也不直接写 MuJoCo 的物理状态。
   button.addEventListener("click", () => command("action", { action: action.id }));
@@ -148,13 +235,40 @@ $("#scene-select").addEventListener("change", () => {
 $("#load-scene").addEventListener("click", () => command("load", { scene: $("#scene-select").value }));
 $("#pause").addEventListener("click", () => command(state.paused ? "resume" : "pause"));
 $("#reset").addEventListener("click", () => command("reset"));
+$("#task-input").addEventListener("input", controls);
+$("#task-start").addEventListener("click", () => command("task_start", { task: $("#task-input").value.trim() }));
+$("#task-cancel").addEventListener("click", () => command("task_cancel"));
+$("#task-cancel-global").addEventListener("click", () => command("task_cancel"));
+const controlTabs = [...document.querySelectorAll('[role="tab"]')];
+function selectControlTab(tab) {
+  controlTabs.forEach(button => {
+    const selected = button === tab;
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    document.getElementById(button.getAttribute("aria-controls")).hidden = !selected;
+  });
+}
+controlTabs.forEach((tab, index) => {
+  tab.addEventListener("click", () => selectControlTab(tab));
+  tab.addEventListener("keydown", event => {
+    let next;
+    if (event.key === "ArrowRight" || event.key === "ArrowLeft") next = controlTabs[1 - index];
+    else if (event.key === "Home") next = controlTabs[0];
+    else if (event.key === "End") next = controlTabs[1];
+    else return;
+    event.preventDefault();
+    selectControlTab(next);
+    next.focus();
+  });
+});
+$("#view-select").addEventListener("change", event => command("view", { view: event.target.value }));
 $("#layout-select").addEventListener("change", event => { document.body.dataset.layout = event.target.value; });
 $("#density-select").addEventListener("change", event => { document.body.dataset.density = event.target.value; });
 
 // 相机只改变观察方式，不影响机器人。拖动结束后提交角度，滚轮提交距离。
 let drag = null, zoomTimer;
 $("#viewport").addEventListener("pointerdown", event => {
-  if (!state.scene || !connected || busy) return;
+  if (!state.scene || !connected || busy || state.view === "head") return;
   drag = { x: event.clientX, y: event.clientY, ...camera };
   event.currentTarget.setPointerCapture(event.pointerId);
 });
@@ -167,13 +281,14 @@ $("#viewport").addEventListener("pointerup", event => {
 });
 $("#viewport").addEventListener("pointercancel", () => { drag = null; });
 $("#viewport").addEventListener("wheel", event => {
-  if (!state.scene || !connected || busy) return;
+  if (!state.scene || !connected || busy || state.view === "head") return;
   event.preventDefault();
   camera.distance = Math.max(0.25, Math.min(3, camera.distance * Math.exp(event.deltaY * 0.001)));
   clearTimeout(zoomTimer);
   zoomTimer = setTimeout(() => command("camera", camera), 120);
 }, { passive: false });
 $("#viewport").addEventListener("keydown", event => {
+  if (!state.scene || !connected || busy || state.view === "head") return;
   const deltas = { ArrowLeft: -10, ArrowRight: 10 };
   if (event.key in deltas) camera.azimuth = ((camera.azimuth + deltas[event.key] + 540) % 360) - 180;
   else if (event.key === "+" || event.key === "=") camera.distance = Math.max(0.25, camera.distance * 0.9);
@@ -199,20 +314,30 @@ async function poll() {
     update(next);
     await syncRenderSize();
     if (state.scene && frameId !== state.frame_id) {
+      const generation = state.generation;
+      const requestedFrameId = state.frame_id;
       const response = await fetch(`/api/frame?id=${state.frame_id}`, { cache: "no-store", signal: AbortSignal.timeout(3000) });
       if (!response.ok) throw new Error("仿真画面读取失败");
-      const url = URL.createObjectURL(await response.blob());
+      const blob = await response.blob();
+      if (generation !== state.generation) return;
+      const returnedGeneration = response.headers.get("X-Scene-Generation");
+      if (returnedGeneration !== null && Number(returnedGeneration) !== generation) return;
+      const url = URL.createObjectURL(blob);
       $("#live-frame").src = url;
       $("#live-frame").hidden = false;
       if (frameUrl) URL.revokeObjectURL(frameUrl);
       frameUrl = url;
-      frameId = state.frame_id;
+      frameId = requestedFrameId;
     }
+    await refreshHeadFrame();
   } catch (error) {
     connected = false;
     token = "";
+    headFrameId = -1;
     $("#connection-text").textContent = "连接中断";
     $(".viewport-state").textContent = "连接中断 · 画面可能过期";
+    $("#head-status").hidden = false;
+    $("#head-status").textContent = "连接中断 · 画面可能过期";
     feedback("无法连接仿真服务", `${error.message}。连接恢复后不会自动继续运动。`);
     controls();
   } finally {

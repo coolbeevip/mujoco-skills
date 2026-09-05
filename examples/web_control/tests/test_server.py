@@ -38,8 +38,20 @@ class FakeScene:
     def stop(self):
         self.moving = False
 
-    def frame(self):
+    def frame(self, view="external"):
         return b"fake frame"
+
+    def observe(self):
+        return b"head frame"
+
+    def motion_pose(self):
+        return getattr(self, "x", 0), 0, getattr(self, "yaw", 0)
+
+    def motion_step(self, command):
+        self.x = getattr(self, "x", 0) + command[0] * 0.02
+        self.yaw = getattr(self, "yaw", 0) + command[2] * 0.02
+        self.moving = any(command)
+        self.step()
 
     def view(self, *args):
         self.camera = args
@@ -54,6 +66,30 @@ class FakeScene:
 class EngineTests(unittest.TestCase):
     def setUp(self):
         self.engine = Engine(Path("unused"), FakeScene)
+
+    def test_two_views_render_without_advancing_physics(self):
+        self.send("load", scene="navigation")
+        self.assertEqual(self.engine.frame, b"fake frame")
+        self.assertEqual(self.engine.head_frame, b"head frame")
+        self.assertTrue(self.engine.read()["head_frame_available"])
+        previous_steps = self.engine.scene.steps
+        self.engine.render()
+        self.assertEqual(self.engine.scene.steps, previous_steps)
+
+    def test_failed_head_render_does_not_publish_partial_frame_pair(self):
+        self.send("load", scene="walk")
+        previous = self.engine.frame, self.engine.head_frame, self.engine.frame_id
+        self.engine.scene.frame = lambda view: b"new external frame"
+
+        def fail():
+            raise ValueError("camera failed")
+
+        self.engine.scene.observe = fail
+        with self.assertRaises(ValueError):
+            self.engine.render()
+        self.assertEqual(
+            (self.engine.frame, self.engine.head_frame, self.engine.frame_id), previous
+        )
 
     def send(self, op, **extra):
         future = self.engine.submit(
@@ -74,6 +110,54 @@ class EngineTests(unittest.TestCase):
         self.engine.tick()
         self.assertEqual(self.engine.scene.steps, steps)
         self.assertFalse(self.engine.scene.moving)
+
+    def test_navigation_is_explicit_and_cancelled_on_reset(self):
+        from concurrent.futures import Future
+
+        self.send("load", scene="navigation")
+        with self.assertRaises(ValueError):
+            self.send("task_start", task="走到红色方块前")
+        self.engine.navigator_submit = lambda *args: Future()
+        self.send("task_start", task="走到红色方块前")
+        nav = self.engine.navigation
+        self.assertTrue(nav.active)
+        with self.assertRaises(ValueError):
+            self.send("action", action="forward")
+        self.send("reset")
+        self.assertEqual(nav.phase, "cancelled")
+        self.assertIsNone(self.engine.navigation)
+        self.assertTrue(self.engine.paused)
+
+    def test_invalid_state_fails_active_navigation(self):
+        from concurrent.futures import Future
+
+        self.send("load", scene="navigation")
+        self.engine.navigator_submit = lambda *args: Future()
+        self.send("task_start", task="走到红色方块前")
+        self.engine.scene.state = lambda: {"time_s": float("nan")}
+        self.engine.publish()
+        self.assertTrue(self.engine.paused)
+        self.assertEqual(self.engine.navigation.phase, "failed")
+        self.assertFalse(self.engine.scene.moving)
+        self.assertIn("状态无效", self.engine.navigation.reason)
+
+    def test_navigation_cancelled_on_heartbeat_loss(self):
+        from concurrent.futures import Future
+
+        self.send("load", scene="navigation")
+        self.engine.navigator_submit = lambda *args: Future()
+        self.send("task_start", task="走到红色方块前")
+        self.engine.tick(now=self.engine.last_seen + 4)
+        self.assertEqual(self.engine.navigation.phase, "cancelled")
+        self.assertTrue(self.engine.paused)
+
+    def test_head_view_does_not_advance_physics(self):
+        self.send("load", scene="walk")
+        self.send("view", view="head")
+        self.assertEqual(self.engine.view, "head")
+        self.assertEqual(self.engine.scene.steps, 0)
+        with self.assertRaises(ValueError):
+            self.send("view", view="unknown")
 
     def test_resolution_validation_and_paused_refresh(self):
         self.send("load", scene="walk")
@@ -170,6 +254,7 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(self.engine.paused)
         self.assertIsNone(self.engine.scene)
         self.assertFalse(self.engine.frame)
+        self.assertFalse(self.engine.head_frame)
         self.assertIn("asset missing", self.engine.error)
 
     def test_cancelled_queued_request_does_not_execute(self):
@@ -209,13 +294,37 @@ class HttpTests(unittest.TestCase):
 
     def test_catalog_and_static_allowlist(self):
         data = json.loads(self.get("/api/catalog"))
-        self.assertEqual([s["id"] for s in data["scenes"]], ["walk", "ball", "roller"])
-        self.assertEqual([len(s["actions"]) for s in data["scenes"]], [9, 9, 5])
+        self.assertEqual(
+            [s["id"] for s in data["scenes"]], ["walk", "ball", "roller", "navigation"]
+        )
+        self.assertEqual([len(s["actions"]) for s in data["scenes"]], [12, 12, 5, 12])
         self.assertIn(b"app.js", self.get("/"))
-        for path in ["/server.py", "/../microduck/.cache", "/api/frame"]:
+        for path in [
+            "/server.py",
+            "/../microduck/.cache",
+            "/api/frame",
+            "/api/head-frame",
+        ]:
             with self.assertRaises(HTTPError) as caught:
                 self.get(path)
             self.assertEqual(caught.exception.code, 404)
+
+    def test_head_frame_route_returns_cached_image_and_generation(self):
+        self.engine.apply(dict(op="load", scene="navigation", generation=0))
+        for path, expected in [
+            ("/api/frame", b"fake frame"),
+            ("/api/head-frame", b"head frame"),
+        ]:
+            with urlopen(self.base + path, timeout=5) as response:
+                self.assertEqual(response.read(), expected)
+                self.assertEqual(response.headers["Content-Type"], "image/png")
+                self.assertEqual(
+                    response.headers["X-Scene-Generation"], str(self.engine.generation)
+                )
+                self.assertEqual(
+                    response.headers["X-Frame-Id"], str(self.engine.frame_id)
+                )
+        self.assertEqual(self.engine.scene.steps, 0)
 
     def test_http_command_is_executed_by_engine_queue(self):
         headers = {"Content-Type": "application/json", "X-Control-Token": "test-token"}

@@ -96,11 +96,20 @@ def validate_policy(session, command_names="twist,head_pose,body_pose"):
 
 
 class Runtime:
-    def __init__(self, cache=DEFAULT_CACHE, seed=0, *, mode="walk", ball=False):
+    def __init__(
+        self, cache=DEFAULT_CACHE, seed=0, *, mode="walk", ball=False, scene_setup=None
+    ):
         if mode not in ("walk", "roller") or (ball and mode != "walk"):
             raise ValueError("mode must be walk or roller; ball requires walk mode")
         self.mode = mode
+        # 官方 head_pose 顺序：neck_pitch、head_pitch、head_yaw、head_roll，
+        # 数值是相对默认姿态的弧度偏移，不是直接覆盖电机目标。
+        self.head_command = np.zeros(4, dtype=np.float32)
+        self.head_target = np.zeros(4, dtype=np.float32)
         self.ball = ball
+        # 可选的场景装配入口只在编译模型前执行，用于加入导航目标等静态物体。
+        # 默认不传，现有键盘与验证样例的场景、策略观测和控制过程保持原样。
+        self.scene_setup = scene_setup
         # 启动只验证本地资产；下载由 assets.py prepare 显式完成。
         self.cache = verify(cache)
         self.catalog = catalog(self.cache)
@@ -152,6 +161,8 @@ class Runtime:
             else ("scene_ball.xml" if self.ball else "scene.xml")
         )
         spec = mujoco.MjSpec.from_file(str(self.cache / "model" / scene))
+        if self.scene_setup is not None:
+            self.scene_setup(spec)
         for actuator in spec.actuators:
             actuator.set_to_motor()
             actuator.forcelimited = True
@@ -221,8 +232,10 @@ class Runtime:
                     # [48:51] 策略命令：步行时为期望速度，w 对应 (0.3, 0, 0)；
                     # 动作策略在相同位置接收姿态标志或阶段信号，见 behaviors.py。
                     command,
-                    # [51:61] 头部指令 4 维、身体指令 6 维，本样例固定为零。
-                    np.zeros(10),
+                    # [51:55] 头部目标缓慢变化，由策略协调身体平衡。
+                    self.head_command,
+                    # [55:61] 身体指令仍保持零。
+                    np.zeros(6),
                 )
             ),
             61,
@@ -239,6 +252,14 @@ class Runtime:
         self.controller.q_target[:] = targets
         # 保存本次输出，下一次 observation() 会把它作为输入的一部分。
         self.last_action = action
+
+    def set_head_pitch(self, offset):
+        value = vector([0, offset, 0, 0], 4, "head pose")
+        if self.mode != "walk" or abs(float(value[1])) > 0.350001:
+            raise ValueError(
+                "head pitch requires walk mode and offset within ±0.35 rad"
+            )
+        self.head_target[:] = value
 
     def step(self, velocity=(0, 0, 0), observer=None):
         # 一次调用完成 20 ms 仿真：推理一次，随后执行四个 5 ms 物理步。
@@ -296,6 +317,14 @@ class Runtime:
             valid = not np.any(command)
         if not valid:
             raise ValueError(f"invalid command for policy {policy}")
+        if policy in {"standing", "walking", "sitstand"}:
+            self.head_command += np.clip(
+                self.head_target - self.head_command, -0.01, 0.01
+            )
+        else:
+            # 踢球、翻滚等策略没有头部控制合同，不能把额外指令混入动作。
+            self.head_command[:] = 0
+            self.head_target[:] = 0
         mode = policy
         # 2. 收集当前状态和目标。即使一直保持 w，关节和身体状态也在变化，
         #    因此每轮都要重新读取观测，策略输出也可能随之改变。

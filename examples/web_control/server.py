@@ -11,14 +11,22 @@ from concurrent.futures import Future, TimeoutError
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from navigation import Navigation
 from scenes import MICRODUCK, MicroduckScene, catalog, render_size
+from vlm import Config, Provider, load_env
 
 ROOT = Path(__file__).resolve().parent
 
 
 class Engine:
-    def __init__(self, cache, factory=MicroduckScene):
+    def __init__(
+        self, cache, factory=MicroduckScene, navigator_submit=None, model_config=None
+    ):
         self.cache, self.factory = cache, factory
+        self.navigator_submit = navigator_submit
+        self.model_config = model_config or {"configured": False}
+        self.navigation = None
+        self.view = "external"
         self.commands = queue.Queue(maxsize=32)
         self.lock = threading.Lock()
         self.scene = None
@@ -29,6 +37,7 @@ class Engine:
         self.message = "请选择并加载场景"
         self.last_seen = time.monotonic()
         self.frame = b""
+        self.head_frame = b""
         self.frame_id = 0
         self.snapshot = {}
         self.publish()
@@ -50,6 +59,8 @@ class Engine:
             # 物理数值已损坏时仍要能返回故障状态，不能让 NaN 破坏整个状态接口。
             self.paused = True
             self.error = f"状态无效，请重置：{error}"
+            if self.navigation and self.navigation.active:
+                self.navigation.fail(self.scene, self.error)
             state = {}
         with self.lock:
             self.snapshot = dict(
@@ -59,6 +70,10 @@ class Engine:
                 error=self.error,
                 message=self.message,
                 frame_id=self.frame_id,
+                head_frame_available=bool(self.head_frame),
+                view=self.view,
+                navigation=self.navigation.status() if self.navigation else None,
+                model_config=self.model_config,
                 **state,
             )
 
@@ -67,9 +82,13 @@ class Engine:
             return dict(self.snapshot)
 
     def render(self):
-        frame = self.scene.frame()
+        frame = self.scene.frame(self.view)
+        # 同一轮渲染不推进物理：外部视图与头部视图观察同一个机器人状态。
+        # HTTP 线程只读取已编码图像，不直接访问 OpenGL 或模型数据。
+        head_frame = self.scene.observe()
         with self.lock:
             self.frame = frame
+            self.head_frame = head_frame
             self.frame_id += 1
 
     def apply(self, request):
@@ -82,6 +101,9 @@ class Engine:
             "action",
             "camera",
             "resolution",
+            "view",
+            "task_start",
+            "task_cancel",
         }:
             raise ValueError("未知操作")
         # 每次重建场景都更换代号。旧页面尚未返回的请求不能控制新机器人。
@@ -94,10 +116,14 @@ class Engine:
             self.paused = True
             # 先停旧场景；即使新资产损坏，旧机器人也不会继续运动。
             if self.scene:
+                if self.navigation and self.navigation.active:
+                    self.navigation.cancel(self.scene, "场景已切换或重置")
                 self.scene.close()
+            self.navigation = None
             self.scene, self.scene_id = None, None
             with self.lock:
                 self.frame = b""
+                self.head_frame = b""
             self.generation += 1
             try:
                 self.scene = self.factory(id, self.cache)
@@ -111,6 +137,46 @@ class Engine:
             return self.message
         if not self.scene:
             raise ValueError("请先加载场景")
+        if op == "task_start":
+            if self.navigator_submit is None:
+                raise ValueError("尚未配置多模态模型服务")
+            if self.error:
+                raise ValueError("仿真异常，请重置场景")
+            if self.navigation and self.navigation.active:
+                raise ValueError("已有任务正在执行，请先中止")
+            status = self.scene.state()
+            seated = (
+                status.get("active") == "sitstand" and status.get("stage") == "seated"
+            )
+            if (status.get("active") and not seated) or status.get(
+                "recovery_control_steps", 0
+            ):
+                raise ValueError("请等待当前动作与恢复阶段结束")
+            navigation = Navigation(request.get("task"), self.navigator_submit)
+            self.scene.stop()
+            self.navigation = navigation
+            self.paused = False
+            self.heartbeat()
+            self.message = "视觉任务已开始"
+            return self.message
+        if op == "task_cancel":
+            if self.navigation and self.navigation.active:
+                self.navigation.cancel(self.scene)
+            self.scene.stop()
+            self.paused = True
+            self.message = "任务已中止，仿真已暂停"
+            return self.message
+        if op == "view":
+            view = request.get("view")
+            if view not in ("external", "head"):
+                raise ValueError("未知观察视角")
+            previous, self.view = self.view, view
+            try:
+                self.render()
+            except Exception:
+                self.view = previous
+                raise
+            return "已切换到头部视角" if view == "head" else "已切换到外部视角"
         if op == "resolution":
             width, height = render_size(request.get("width"))
             self.scene.resize(width)
@@ -123,6 +189,8 @@ class Engine:
                 raise ValueError(self.error) from error
             return f"实际渲染分辨率已更新为 {width} × {height}"
         if op == "pause":
+            if self.navigation and self.navigation.active:
+                self.navigation.cancel(self.scene, "用户暂停仿真")
             self.paused = True
             self.scene.stop()
             self.message = "已暂停物理时间并清除移动目标；进行中的动作保留进度"
@@ -133,6 +201,8 @@ class Engine:
             self.heartbeat()
             self.message = "仿真运行中"
         elif op == "action":
+            if self.navigation and self.navigation.active:
+                raise ValueError("视觉任务执行中，请先中止任务再手动控制")
             if self.error or self.paused:
                 raise ValueError("请先恢复仿真；异常状态需要重置")
             self.message = self.scene.action(request.get("action"))
@@ -175,10 +245,18 @@ class Engine:
             if stale:
                 self.paused = True
                 self.scene.stop()
+                if self.navigation and self.navigation.active:
+                    self.navigation.cancel(self.scene, "网页心跳中断")
                 self.message = "网页心跳中断，已自动暂停；请手动继续"
             else:
                 try:
-                    self.scene.step()
+                    if self.navigation and self.navigation.active:
+                        self.navigation.tick(self.scene)
+                        if not self.navigation.active:
+                            self.paused = True
+                            self.message = self.navigation.reason
+                    else:
+                        self.scene.step()
                 except Exception as error:
                     self.paused = True
                     self.scene.stop()
@@ -187,6 +265,8 @@ class Engine:
 
     def close(self):
         if self.scene:
+            if self.navigation and self.navigation.active:
+                self.navigation.cancel(self.scene, "服务关闭")
             self.scene.close()
 
 
@@ -195,7 +275,7 @@ def handler(engine, token):
         def log_message(self, *args):
             pass
 
-        def reply(self, status, body, kind="application/json"):
+        def reply(self, status, body, kind="application/json", headers=None):
             if kind == "application/json":
                 body = json.dumps(body, ensure_ascii=False, allow_nan=False).encode()
             self.send_response(status)
@@ -203,6 +283,8 @@ def handler(engine, token):
             self.send_header("Content-Length", str(len(body)))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
+            for name, value in (headers or {}).items():
+                self.send_header(name, str(value))
             self.send_header(
                 "Content-Security-Policy",
                 "default-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'",
@@ -228,11 +310,22 @@ def handler(engine, token):
                 return self.reply(200, {"scenes": catalog(), "token": token})
             if path == "/api/state":
                 return self.reply(200, engine.read())
-            if path == "/api/frame":
+            if path in {"/api/frame", "/api/head-frame"}:
                 with engine.lock:
-                    frame = engine.frame
+                    frame = (
+                        engine.head_frame if path == "/api/head-frame" else engine.frame
+                    )
+                    generation, frame_id = engine.generation, engine.frame_id
                 return (
-                    self.reply(200, frame, "image/png")
+                    self.reply(
+                        200,
+                        frame,
+                        "image/png",
+                        {
+                            "X-Scene-Generation": generation,
+                            "X-Frame-Id": frame_id,
+                        },
+                    )
                     if frame
                     else self.reply(404, {"error": "尚无画面"})
                 )
@@ -242,6 +335,7 @@ def handler(engine, token):
                 "/styles.css": ("styles.css", "text/css"),
                 "/app.js": ("app.js", "text/javascript"),
                 "/display.js": ("display.js", "text/javascript"),
+                "/decisions.js": ("decisions.js", "text/javascript"),
             }
             if path not in static:
                 return self.reply(404, {"error": "未找到资源"})
@@ -293,11 +387,28 @@ def handler(engine, token):
 
 
 def main():
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
+    )
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--cache", type=Path, default=MICRODUCK / ".cache")
     args = parser.parse_args()
-    engine = Engine(args.cache)
+    try:
+        # 路径相对仓库位置，终端和 PyCharm 使用不同工作目录也读取同一份配置。
+        load_env(ROOT.parent.parent / ".env")
+        config = Config.from_env()
+    except (ValueError, OSError) as error:
+        parser.error(str(error))
+    provider = Provider(config) if config else None
+    # 配置模型不会立即发送图像；只有用户开始任务后才发起推理请求。
+    engine = Engine(
+        args.cache,
+        navigator_submit=provider.submit if provider else None,
+        model_config=config.public() if config else None,
+    )
     server = ThreadingHTTPServer(
         ("127.0.0.1", args.port), handler(engine, secrets.token_urlsafe(32))
     )
@@ -320,6 +431,8 @@ def main():
                     engine.paused = True
                     engine.scene.stop()
                     engine.error = f"渲染失败，请重置：{error}"
+                    if engine.navigation and engine.navigation.active:
+                        engine.navigation.fail(engine.scene, engine.error)
                 engine.publish()
                 next_frame = time.monotonic() + 0.05
             # 不补跑积压时间：机器较慢时仿真随之变慢，动作仍按固定物理步推进。
@@ -330,6 +443,8 @@ def main():
         server.shutdown()
         server.server_close()
         engine.close()
+        if provider:
+            provider.close()
 
 
 if __name__ == "__main__":
