@@ -67,11 +67,24 @@ class NavigationTests(unittest.TestCase):
 
     def test_only_head_image_task_and_history_reach_provider(self):
         self.thinking()
+        snapshot = self.nav.status()["current_snapshot"]
+        image_id = snapshot["url"].rsplit("/", 1)[-1]
+        self.assertEqual(self.nav.observation_images[image_id], self.calls[0][1])
         self.assertEqual(self.calls, [("走到红色方块前", b"head frame at 50", ())])
         before = self.scene.steps
         for _ in range(100):
             self.nav.tick(self.scene)
         self.assertEqual(self.scene.steps, before)
+
+    def test_history_photos_are_for_ui_only_and_task_ids_are_unique(self):
+        self.thinking()
+        self.future.set_result(decision("wait", 0.2))
+        self.nav.tick(self.scene)
+        row = self.nav.status()["history"][0]
+        self.assertEqual(row["snapshot"], self.nav.status()["current_snapshot"])
+        self.assertNotIn("snapshot", self.nav.history[0])
+        other = Navigation("另一个任务", lambda *args: Future())
+        self.assertNotEqual(other.image_session, self.nav.image_session)
 
     def test_move_is_bounded_and_followed_by_fresh_observation(self):
         self.thinking()

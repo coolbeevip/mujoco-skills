@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from navigation import Decision, SKILLS
+from navigation import Decision, SKILLS, SEARCH_ACTIONS
 
 LOG = logging.getLogger("web_control.vlm")
 
@@ -86,6 +86,7 @@ SCHEMA = {
                 "done",
                 "abort",
                 *sorted(SKILLS),
+                *sorted(SEARCH_ACTIONS),
             ],
         },
         "amount": {"type": "number"},
@@ -98,7 +99,20 @@ SCHEMA = {
 }
 
 SYSTEM = """你通过头部摄像头控制一个 MuJoCo 仿真中的小型双足机器人完成用户导航任务。
-根据当前图像、已执行动作历史及可用的 context.proximity 深度测量决策，没有目标世界坐标或地图。
+根据当前图像、已执行动作历史及可用的 context.proximity 深度测量决策，没有目标世界坐标。
+办公场景从未定位目标且目标不可见时，优先选择 search_open、search_101、search_102、search_103，amount=0。
+object_memory 保存当前世界中已经观测过的物体，position 是从头部 RGB-D 得到的最后水平位置（米），不是隐藏真值。位置可能因物体移动而过期。
+target_memory 存在时，目标暂时不可见属于遮挡或离开视野，不是从未发现。优先沿已知位置绕行、换视角重观察，不要重新全局搜索或反复原地转向。控制器会把移动请求转为安全接近路线；路线失败只排除失败方向，不删除目标记忆。
+color_candidate 仅表示颜色候选；position=null 表示尚无可靠定位，不得编造坐标。currently_visible=false 的旧记录不能作为当前到达证据。
+历史中的 approach_target 是控制器根据已观测 RGB-D 目标位置规划接近路线的内部记录，不是你可以输出的动作。绕行时允许目标暂时不在画面中央或不可见，不要因暂时背离目标就反复纠正方向。target_memory 是有时间戳的旧观测估计，不是当前可见证据，不能据此宣称到达。
+每次搜索一个分区内尚未观察的采样点：控制器规划路线、穿门、途中测距避障并分方向观察。
+发现目标会提前返回，不等于已经到达。search_plan 记录已观察点；避免重复选择已采样完的分区。
+不要逐步用左右转代替分区搜索。current_region 是定位结果，看到门牌不代表已经进入房间。
+目标出现后再选择接近、转向或任务要求的原子动作。其他场景禁止使用 search_*。
+办公场景额外提供 office_search 建筑平面图和自身定位；它不是目标答案。结合历史 observed_from
+记住观察过的位置与朝向，分区探索开放办公区及会议室，不能在起点反复转圈代替进入房间。
+obstacles.front_clearance_cm 是当前头部视野内前方低位障碍距离；null 仅表示未检测到，
+不代表盲区安全。距障碍小于23厘米时不要继续前进，先转向寻找通道。墙、桌腿、椅脚都不可穿越。
 proximity 来自头部 RGB-D：surface_distance_cm 是机器人躯干中心到可见目标表面的水平距离，
 不是相机光轴深度；bearing_deg 为目标相对身体的方向，左正右负。
 “走到面前”要求 surface_distance_cm 在 18～28 厘米且方向偏差不超过 12 度（near=true）。
@@ -157,6 +171,10 @@ class Config:
     def from_env(cls, env=None):
         env = os.environ if env is None else env
         provider = env.get("VLM_PROVIDER", "").strip()
+        requested_provider = provider
+        # openai 是公开配置名；保留旧名称兼容已有环境。
+        if provider == "openai":
+            provider = "openai-compatible"
         model = env.get("VLM_MODEL", "").strip()
         if not provider or provider == "openai-compatible":
             model = model or env.get("OPENAI_MODEL", "").strip()
@@ -169,9 +187,7 @@ class Config:
             or not model
             or len(model) > 200
         ):
-            raise ValueError(
-                "请配置 VLM_PROVIDER（openai-compatible/ollama）和 VLM_MODEL"
-            )
+            raise ValueError("请配置 VLM_PROVIDER（openai/ollama）和 VLM_MODEL")
         explicit_base = env.get("VLM_BASE_URL", "").strip().rstrip("/")
         openai_base = env.get("OPENAI_BASE_URL", "").strip().rstrip("/")
         base_url = (
@@ -211,7 +227,12 @@ class Config:
             )
         if any(ord(c) < 32 or ord(c) == 127 for c in api_key):
             raise ValueError("模型密钥包含无效控制字符")
-        return cls(provider, model, base_url, api_key)
+        return cls(
+            "openai" if requested_provider == "openai" else provider,
+            model,
+            base_url,
+            api_key,
+        )
 
     def public(self):
         return dict(
@@ -265,6 +286,11 @@ class Provider:
 
     def payload(self, task, picture, history, context=None):
         encoded = base64.b64encode(picture).decode("ascii")
+        context = dict(context) if context is not None else None
+        trigger = context.pop("trigger_image", None) if context is not None else None
+        images = [encoded]
+        if trigger is not None:
+            images.append(base64.b64encode(trigger).decode("ascii"))
         observation = {"task": task, "executed_history": history}
         if context is not None:
             observation["context"] = context
@@ -276,7 +302,7 @@ class Provider:
                 format=SCHEMA,
                 messages=[
                     {"role": "system", "content": SYSTEM},
-                    {"role": "user", "content": text, "images": [encoded]},
+                    {"role": "user", "content": text, "images": images},
                 ],
                 options={"num_predict": 1024},
             )
@@ -291,10 +317,13 @@ class Provider:
                     "role": "user",
                     "content": [
                         {"type": "text", "text": text},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{encoded}"},
-                        },
+                        *[
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{image}"},
+                            }
+                            for image in images
+                        ],
                     ],
                 },
             ],

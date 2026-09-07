@@ -9,19 +9,12 @@
   <link rel="stylesheet" href="styles.css">
   <script src="display.js" defer></script>
   <script src="decisions.js" defer></script>
+  <script src="camera.js" defer></script>
   <script src="app.js" defer></script>
 </head>
-<body data-layout="standard" data-density="comfortable">
+<body>
   <header class="topbar">
     <div class="identity"><span class="wordmark">SIM / LAB</span><span class="divider"></span><span>场景控制台</span></div>
-    <span class="connection"><span class="status-dot"></span><span id="connection-text">正在连接本机服务</span></span>
-  </header>
-
-  <main class="workspace">
-    <div class="preview-notice" role="note">
-      <span id="runtime-note">请选择并加载场景。网页失去心跳 3 秒后自动暂停，恢复连接后需手动继续。</span>
-    </div>
-
     <section class="scene-toolbar" aria-label="场景配置">
       <div class="scene-field"><label for="scene-select">场景</label>
         <select id="scene-select">
@@ -35,6 +28,13 @@
       <button class="button" id="pause" disabled>继续仿真</button>
       <button class="button" id="reset" disabled>重置场景</button>
     </section>
+    <span class="connection"><span class="status-dot"></span><span id="connection-text">正在连接本机服务</span></span>
+  </header>
+
+  <main class="workspace">
+    <div class="preview-notice" role="note">
+      <span id="runtime-note">请选择并加载场景。网页失去心跳 3 秒后自动暂停，恢复连接后需手动继续。</span>
+    </div>
 
     <div class="control-tabs" role="tablist" aria-label="控制方式">
       <button id="navigation-tab" type="button" role="tab" aria-selected="true" aria-controls="navigation-panel">视觉导航</button>
@@ -55,6 +55,12 @@
       <div class="panel-heading"><h2 id="decision-heading">模型决策记录</h2><button class="button" id="task-cancel-global" hidden>中止当前任务</button><span id="task-count">0 条</span></div>
       <div class="decision-scroll" tabindex="0" aria-label="模型决策记录内容">
         <p id="task-reason" role="status">尚无模型观察结果</p>
+        <details id="object-memory-panel">
+          <summary id="memory-summary">已观察物体 · 0</summary>
+          <p>位置为最后一次深度观测的水平坐标（米），不保证物体仍在原地。</p>
+          <ul id="object-memory-list"></ul>
+          <a href="/api/object-memory" target="_blank" rel="noopener">查看持久化记录（JSON）</a>
+        </details>
         <ol id="task-history"></ol>
       </div>
     </section>
@@ -70,7 +76,7 @@
           <span class="mono" id="render-size" aria-live="polite">等待画面</span>
         </div>
         <div class="canvas-area">
-        <div class="viewport" id="viewport" tabindex="0" aria-label="仿真画面；拖动旋转，滚轮缩放；键盘左右键旋转，加减键缩放">
+        <div class="viewport" id="viewport" tabindex="0" aria-label="仿真画面；左键拖动旋转，右键拖动平移，滚轮缩放；键盘左右键旋转，加减键缩放">
           <img id="live-frame" alt="MuJoCo 实时仿真画面" hidden draggable="false">
           <div class="viewport-top"><span id="viewport-scene">MICRODUCK / WALK</span><span>VIEWPORT</span></div>
           <div class="empty-view">
@@ -79,12 +85,19 @@
             <p>选择场景后点击「加载场景」</p>
             <span class="empty-tag">尚无仿真画面</span>
           </div>
-          <div class="viewport-bottom"><span id="view-help">拖动后松开旋转 · 滚轮缩放</span><span class="mono">MuJoCo / CPU</span></div>
+          <div class="viewport-bottom"><span id="view-help">左键旋转 · 右键平移 · 滚轮缩放</span><span class="mono">MuJoCo / CPU</span></div>
         </div>
-        <details class="camera-pip" open>
-          <summary><span>头部摄像头</span><span class="pip-toggle" aria-hidden="true"></span></summary>
+        <div class="camera-pips">
+        <details class="camera-pip" id="head-pip" open>
+          <summary><span>彩色摄像头</span><span class="pip-toggle" aria-hidden="true"></span></summary>
           <div class="pip-image"><img id="head-frame" alt="机器人头部摄像头实时画面" hidden draggable="false"><p id="head-status" role="status">加载场景后显示头部画面</p><span id="head-stamp" class="head-stamp" hidden></span></div>
         </details>
+        <details class="camera-pip" id="depth-pip" open>
+          <summary><span>深度摄像头</span><span class="pip-toggle" aria-hidden="true"></span></summary>
+          <div class="pip-image"><img id="depth-frame" alt="机器人头部深度图，暖色近、冷色远" hidden draggable="false"><p id="depth-status" role="status">加载场景后显示深度画面</p><span id="depth-stamp" class="head-stamp" hidden></span></div>
+          <div class="depth-legend" aria-label="深度色标：0.1 米以内暖色，5 米及以上冷色，黑色为无效深度"><span>≤ 0.1 m</span><i></i><span>≥ 5 m</span><span>黑色：无效</span></div>
+        </details>
+        </div>
         </div>
         <div class="telemetry" aria-label="仿真状态">
           <div><span>仿真时间</span><strong id="sim-time">—</strong></div>
@@ -111,26 +124,13 @@
       </aside>
     </div>
 
-    <section class="activity-panel" aria-labelledby="activity-heading">
-      <div class="panel-heading"><div><span class="section-index">03</span><h2 id="activity-heading">操作反馈</h2></div><span class="count-label">SERVER RESPONSE</span></div>
-      <div class="activity-body" aria-live="polite" aria-atomic="true">
-        <span class="activity-indicator" aria-hidden="true"></span>
-        <div><strong id="feedback-title">加载场景后开始控制</strong><p id="feedback-detail">加载完成后点击继续仿真，再选择动作。动作执行结果以实时物理状态为准。</p></div>
-        <code id="feedback-code">未发送指令</code>
-      </div>
-    </section>
-
   </main>
+  <div id="control-notice" hidden><span id="control-notice-text" role="status"></span><button id="notice-close" class="button" aria-label="关闭操作提示">关闭</button></div>
 
-  <details class="tweaks">
-    <summary>Tweaks <span>页面布局</span></summary>
-    <div class="tweaks-body">
-      <label for="layout-select">布局方案</label>
-      <select id="layout-select"><option value="standard">标准控制台</option><option value="left">控制优先 · 加宽右栏</option><option value="wide">视图优先 · 收窄右栏</option></select>
-      <label for="density-select">内容间距</label>
-      <select id="density-select"><option value="comfortable">舒适</option><option value="compact">紧凑</option></select>
-      <p>仅调整页面外观，不影响动作映射。</p>
-    </div>
-  </details>
+  <dialog id="observation-dialog" aria-labelledby="observation-caption">
+    <div class="observation-dialog-heading"><span id="observation-caption"></span><button class="button" id="observation-close" autofocus>关闭</button></div>
+    <img id="observation-full" alt="该次推理实际发送的头部摄像头照片">
+    <p>640 × 360 原始图像 · 历史观察，不是实时画面</p>
+  </dialog>
 </body>
 </html>

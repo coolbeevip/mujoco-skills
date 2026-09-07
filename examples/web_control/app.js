@@ -3,20 +3,24 @@
 const $ = selector => document.querySelector(selector);
 let scenes = [], token = "", state = {}, busy = false, connected = false;
 let frameId = -1, frameUrl = "", lastError = "";
-let headFrameId = -1, headFrameUrl = "";
+const pipFrames = { head: { id: -1, url: "" }, depth: { id: -1, url: "" } };
 let camera = { azimuth: 135, elevation: -20, distance: 0.85 };
 let sizeCandidate = "", sizeSince = 0, sizeAttempt = "";
 let historyKey = "";
+let memoryKey = "";
 const taskPhases = { settling: "等待站稳", waiting: "停步观察", observing: "读取头部图像", thinking: "模型正在判断", moving: "执行移动", skill: "执行原子动作 / 恢复", confirming: "停止后再次观察", completed: "模型视觉确认完成", cancelled: "任务已中止", failed: "任务失败" };
+taskPhases.searching = "前往观察点 / 分区搜索";
+taskPhases.turn_preparing = "移动前回正头部";
 function taskActive() { return Boolean(state.navigation && !["completed", "cancelled", "failed"].includes(state.navigation.phase)); }
 taskPhases.head = "调整头部 / 重新观察";
 const stages = { idle: "平衡 / 移动", sitting: "坐下中", seated: "保持坐姿", rising: "站起中", executing: "执行动作", recovering: "恢复平衡" };
 
-function feedback(title, detail, mapping = "") {
-  $("#feedback-title").textContent = title;
-  $("#feedback-detail").textContent = detail;
-  $("#feedback-code").textContent = mapping;
+function feedback(title, detail) {
+  const notice = $("#control-notice");
+  notice.hidden = ["操作已响应", "已选择场景"].includes(title);
+  $("#control-notice-text").textContent = `${title}：${detail}`;
 }
+$("#notice-close").addEventListener("click", () => { $("#control-notice").hidden = true; });
 
 function explain(message) {
   const messages = {
@@ -68,14 +72,16 @@ function update(next) {
   state = next;
   if (changed) {
     frameId = -1;
-    camera = { azimuth: 135, elevation: -20, distance: 0.85 };
+    camera = next.external_camera || { azimuth: 135, elevation: -20, distance: 0.85 };
     $("#live-frame").hidden = true;
-    $("#head-frame").hidden = true;
-    $("#head-frame").removeAttribute("src");
-    $("#head-stamp").hidden = true;
-    headFrameId = -1;
-    if (headFrameUrl) URL.revokeObjectURL(headFrameUrl);
-    headFrameUrl = "";
+    for (const [kind, frame] of Object.entries(pipFrames)) {
+      $(`#${kind}-frame`).hidden = true;
+      $(`#${kind}-frame`).removeAttribute("src");
+      $(`#${kind}-stamp`).hidden = true;
+      frame.id = -1;
+      if (frame.url) URL.revokeObjectURL(frame.url);
+      frame.url = "";
+    }
     sizeAttempt = "";
     $("#render-size").textContent = "等待画面";
   }
@@ -90,30 +96,62 @@ function update(next) {
   if (state.error && state.error !== lastError) feedback("仿真异常", state.error, "请重置场景");
   lastError = state.error;
   $("#runtime-note").textContent = state.error || explain(state.message || "请选择场景");
-  if (!state.scene || !state.head_frame_available) {
-    $("#head-status").hidden = false;
-    $("#head-status").textContent = state.scene ? "头部画面尚未就绪，请确认后端服务已重启" : "加载场景后显示头部画面";
+  for (const kind of Object.keys(pipFrames)) {
+    if (!state.scene || !state[`${kind}_frame_available`]) {
+      $(`#${kind}-frame`).hidden = true;
+      $(`#${kind}-stamp`).hidden = true;
+      $(`#${kind}-status`).hidden = false;
+      $(`#${kind}-status`).textContent = state.scene ? "画面尚未就绪，请确认后端服务已重启" : "加载场景后显示画面";
+      pipFrames[kind].id = -1;
+    }
   }
   $("#view-select").value = state.view || "external";
   const head = state.view === "head";
   $("#viewport").dataset.view = head ? "head" : "external";
-  $("#view-help").textContent = head ? "头部固定视角 · 随机器人运动" : "拖动后松开旋转 · 滚轮缩放";
+  $("#view-help").textContent = head ? "头部固定视角 · 随机器人运动" : "左键旋转 · 右键平移 · 滚轮缩放";
   $("#viewport").setAttribute("aria-label", head ? "机器人头部摄像头画面" : "仿真画面；拖动旋转，滚轮缩放；键盘左右键旋转，加减键缩放");
   const config = state.model_config;
   $("#model-status").textContent = config?.configured ? `${config.provider} / ${config.model} · 开始任务后向该服务发送任务、头部图像及决策历史` : "尚未配置模型：在服务端设置 VLM_PROVIDER 和 VLM_MODEL 后重启服务。密钥仅在本机配置。";
   const navigation = state.navigation;
+  const objects = state.object_memory || [];
+  $("#memory-summary").textContent = `已观察物体 · ${objects.length}`;
+  const nextMemoryKey = JSON.stringify(objects);
+  if (nextMemoryKey !== memoryKey) {
+    memoryKey = nextMemoryKey;
+    $("#object-memory-list").replaceChildren(...objects.map(object => {
+      const row = document.createElement("li");
+      const position = object.position ? `x ${object.position[0].toFixed(2)} / y ${object.position[1].toFixed(2)} m` : "尚未可靠定位";
+      const visibility = object.position_verified_now ? "当前深度已确认" : object.currently_visible ? "当前仅见颜色候选" : "暂时不可见 · 保留记忆";
+      row.textContent = `${object.name} · ${visibility} · ${position} · 最后看见于仿真 ${object.observed_at_s.toFixed(1)} s`;
+      return row;
+    }));
+  }
   $("#task-phase").textContent = navigation ? (taskPhases[navigation.phase] || navigation.phase) : "未开始";
   $("#task-reason").textContent = navigation ? `${navigation.task}：${navigation.reason}` : "尚无模型观察结果";
   const history = navigation?.history || [];
   $("#task-count").textContent = `${history.length} 条`;
-  const key = JSON.stringify(history);
+  const records = [...history];
+  if (navigation?.current_snapshot && navigation.observations > (history.at(-1)?.observation || 0)) {
+    records.push({ observation: navigation.observations, snapshot: navigation.current_snapshot, pending: true,
+      evidence: navigation.phase === "thinking" ? "模型正在分析这张照片…" : "本次观察尚未产生有效决策" });
+  }
+  const key = JSON.stringify(records);
   if (key !== historyKey) {
     historyKey = key;
+    // 动作进度每轮都会更新文字，复用已有图片节点，避免反复下载同一张照片。
+    const photos = new Map([...$("#task-history").querySelectorAll(".observation-photo")].map(node => [node.dataset.url, node]));
     // 模型文本是不可信输入，只作为文字显示，绝不解析成 HTML 或代码。
     // 仅将展示顺序倒置，不改变状态中的历史顺序和原始观察编号。
-    $("#task-history").replaceChildren(...[...history].reverse().map(item => {
+    $("#task-history").replaceChildren(...records.reverse().map(item => {
       const row = document.createElement("li");
-      const description = describeDecision(item);
+      if (item.snapshot) row.append(photos.get(item.snapshot.url) || observationPhoto(item));
+      if (item.snapshot?.trigger) {
+        const trigger = { ...item, snapshot: item.snapshot.trigger, triggerPhoto: true };
+        row.append(photos.get(trigger.snapshot.url) || observationPhoto(trigger));
+      }
+      const description = item.pending
+        ? { title: `观察 ${item.observation}`, evidence: item.evidence, result: "", assessment: "" }
+        : describeDecision(item);
       for (const [key, tag] of [["title", "strong"], ["evidence", "p"], ["result", "p"], ["assessment", "small"]]) {
         const line = document.createElement(tag);
         line.className = `decision-${key}`;
@@ -125,6 +163,31 @@ function update(next) {
   }
   controls();
 }
+
+function observationPhoto(item) {
+  const figure = document.createElement("figure");
+  figure.className = "observation-photo";
+  figure.dataset.url = item.snapshot.url;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.setAttribute("aria-label", `放大观察 ${item.observation} ${item.triggerPhoto ? "运动中触发帧" : "停步照片"}`);
+  const img = document.createElement("img");
+  img.loading = "lazy";
+  img.alt = `观察 ${item.observation}：发送给模型的头部图像`;
+  img.src = item.snapshot.url;
+  const caption = document.createElement("figcaption");
+  caption.textContent = `观察 ${item.observation} · ${Number.isFinite(item.snapshot.time_s) ? `仿真 ${item.snapshot.time_s.toFixed(2)} s · ` : ""}${item.triggerPhoto ? "运动中触发帧（历史）" : "停步观察原图"} · 已发送`;
+  img.addEventListener("error", () => { caption.textContent = `观察 ${item.observation} · 照片已失效或加载失败`; button.disabled = true; });
+  button.append(img);
+  button.addEventListener("click", () => {
+    $("#observation-full").src = item.snapshot.url;
+    $("#observation-caption").textContent = caption.textContent;
+    $("#observation-dialog").showModal();
+  });
+  figure.append(button, caption);
+  return figure;
+}
+$("#observation-close").addEventListener("click", () => $("#observation-dialog").close());
 
 async function command(op, extra = {}, quiet = false) {
   if (busy) return;
@@ -165,37 +228,41 @@ $("#live-frame").addEventListener("load", () => {
   $("#render-size").textContent = `${image.naturalWidth} × ${image.naturalHeight}`;
 });
 
-$(".camera-pip").addEventListener("toggle", () => {
-  // 重新展开时获取最新帧；折叠只停止下载小窗图像，不影响仿真与视觉任务。
-  if ($(".camera-pip").open) headFrameId = -1;
-});
+for (const kind of Object.keys(pipFrames)) {
+  $(`#${kind}-pip`).addEventListener("toggle", () => {
+    // 两个窗口独立续帧；折叠只停止该窗口下载，不影响仿真或另一个窗口。
+    if ($(`#${kind}-pip`).open) pipFrames[kind].id = -1;
+  });
+}
 
-async function refreshHeadFrame() {
-  if (!state.scene || !state.head_frame_available || !$(".camera-pip").open || headFrameId === state.frame_id) return;
+async function refreshPipFrame(kind) {
+  const frame = pipFrames[kind];
+  if (!state.scene || !state[`${kind}_frame_available`] || !$(`#${kind}-pip`).open || frame.id === state.frame_id) return;
   const generation = state.generation;
   try {
-    const response = await fetch(`/api/head-frame?id=${state.frame_id}`, { cache: "no-store", signal: AbortSignal.timeout(3000) });
-    if (!response.ok) throw new Error("头部画面读取失败");
+    const response = await fetch(`/api/${kind}-frame?id=${state.frame_id}`, { cache: "no-store", signal: AbortSignal.timeout(3000) });
+    if (!response.ok) throw new Error("摄像头画面读取失败");
     const blob = await response.blob();
     // 换场景期间迟到的图像直接丢弃，不能盖住新场景的小窗。
     if (generation !== state.generation || Number(response.headers.get("X-Scene-Generation")) !== generation) return;
+    if (!$(`#${kind}-pip`).open) return;
     const url = URL.createObjectURL(blob);
-    const image = $("#head-frame");
-    const previous = headFrameUrl;
+    const image = $(`#${kind}-frame`);
+    const previous = frame.url;
     image.src = url;
-    headFrameUrl = url;
+    frame.url = url;
     if (previous) URL.revokeObjectURL(previous);
     image.hidden = false;
-    $("#head-status").hidden = true;
-    headFrameId = Number(response.headers.get("X-Frame-Id"));
-    $("#head-stamp").textContent = `HEAD / 640 × 360 · 帧 ${headFrameId}`;
-    $("#head-stamp").hidden = false;
+    $(`#${kind}-status`).hidden = true;
+    frame.id = Number(response.headers.get("X-Frame-Id"));
+    $(`#${kind}-stamp`).textContent = `${kind === "head" ? "RGB" : "DEPTH"} / 640 × 360 · 帧 ${frame.id}`;
+    $(`#${kind}-stamp`).hidden = false;
   } catch (error) {
     if (generation !== state.generation) return;
-    $("#head-frame").hidden = true;
-    $("#head-stamp").hidden = true;
-    $("#head-status").hidden = false;
-    $("#head-status").textContent = `${error.message}，正在重试`;
+    $(`#${kind}-frame`).hidden = true;
+    $(`#${kind}-stamp`).hidden = true;
+    $(`#${kind}-status`).hidden = false;
+    $(`#${kind}-status`).textContent = `${error.message}，正在重试`;
   }
 }
 
@@ -262,28 +329,47 @@ controlTabs.forEach((tab, index) => {
   });
 });
 $("#view-select").addEventListener("change", event => command("view", { view: event.target.value }));
-$("#layout-select").addEventListener("change", event => { document.body.dataset.layout = event.target.value; });
-$("#density-select").addEventListener("change", event => { document.body.dataset.density = event.target.value; });
 
-// 相机只改变观察方式，不影响机器人。拖动结束后提交角度，滚轮提交距离。
-let drag = null, zoomTimer;
+// 拖动期间串行提交最新视角，合并中间事件，避免请求积压或松手时丢失最后位置。
+let drag = null, zoomTimer, cameraTimer, pendingCamera = null;
+async function flushCamera() {
+  cameraTimer = null;
+  if (!pendingCamera) return;
+  if (busy) { cameraTimer = setTimeout(flushCamera, 80); return; }
+  const next = pendingCamera;
+  pendingCamera = null;
+  if (next.generation === state.generation && connected && state.view !== "head") {
+    await command("camera", next.camera, true);
+  }
+  if (pendingCamera && !cameraTimer) cameraTimer = setTimeout(flushCamera, 80);
+}
+function queueCamera() {
+  pendingCamera = { generation: state.generation, camera: { ...camera } };
+  if (!cameraTimer) cameraTimer = setTimeout(flushCamera, 80);
+}
 $("#viewport").addEventListener("pointerdown", event => {
-  if (!state.scene || !connected || busy || state.view === "head") return;
-  drag = { x: event.clientX, y: event.clientY, ...camera };
+  if (!state.scene || !connected || busy || state.view === "head" || ![0, 2].includes(event.button)) return;
+  event.preventDefault();
+  drag = { x: event.clientX, y: event.clientY, camera: { ...camera }, pan: event.button === 2, id: event.pointerId, generation: state.generation };
   event.currentTarget.setPointerCapture(event.pointerId);
 });
+function moveCamera(event) {
+  if (!drag || drag.id !== event.pointerId || drag.generation !== state.generation) return;
+  camera = draggedCamera(drag.camera, event.clientX - drag.x, event.clientY - drag.y, event.currentTarget.clientHeight, drag.pan);
+  queueCamera();
+}
+$("#viewport").addEventListener("pointermove", moveCamera);
 $("#viewport").addEventListener("pointerup", event => {
-  if (!drag) return;
-  camera.azimuth = ((drag.azimuth + (event.clientX - drag.x) * 0.4 + 540) % 360) - 180;
-  camera.elevation = Math.max(-85, Math.min(-5, drag.elevation + (event.clientY - drag.y) * 0.3));
+  moveCamera(event);
   drag = null;
-  command("camera", camera);
 });
 $("#viewport").addEventListener("pointercancel", () => { drag = null; });
+$("#viewport").addEventListener("lostpointercapture", () => { drag = null; });
+$("#viewport").addEventListener("contextmenu", event => event.preventDefault());
 $("#viewport").addEventListener("wheel", event => {
   if (!state.scene || !connected || busy || state.view === "head") return;
   event.preventDefault();
-  camera.distance = Math.max(0.25, Math.min(3, camera.distance * Math.exp(event.deltaY * 0.001)));
+  camera.distance = Math.max(0.25, Math.min(state.scene === "office" ? 12 : 3, camera.distance * Math.exp(event.deltaY * 0.001)));
   clearTimeout(zoomTimer);
   zoomTimer = setTimeout(() => command("camera", camera), 120);
 }, { passive: false });
@@ -292,7 +378,7 @@ $("#viewport").addEventListener("keydown", event => {
   const deltas = { ArrowLeft: -10, ArrowRight: 10 };
   if (event.key in deltas) camera.azimuth = ((camera.azimuth + deltas[event.key] + 540) % 360) - 180;
   else if (event.key === "+" || event.key === "=") camera.distance = Math.max(0.25, camera.distance * 0.9);
-  else if (event.key === "-") camera.distance = Math.min(3, camera.distance * 1.1);
+  else if (event.key === "-") camera.distance = Math.min(state.scene === "office" ? 12 : 3, camera.distance * 1.1);
   else return;
   event.preventDefault();
   command("camera", camera);
@@ -329,11 +415,15 @@ async function poll() {
       frameUrl = url;
       frameId = requestedFrameId;
     }
-    await refreshHeadFrame();
+    await Promise.all(Object.keys(pipFrames).map(refreshPipFrame));
   } catch (error) {
     connected = false;
     token = "";
-    headFrameId = -1;
+    for (const [kind, frame] of Object.entries(pipFrames)) {
+      frame.id = -1;
+      $(`#${kind}-status`).hidden = false;
+      $(`#${kind}-status`).textContent = "连接中断 · 画面可能过期";
+    }
     $("#connection-text").textContent = "连接中断";
     $(".viewport-state").textContent = "连接中断 · 画面可能过期";
     $("#head-status").hidden = false;

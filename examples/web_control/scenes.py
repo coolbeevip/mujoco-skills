@@ -62,6 +62,7 @@ def catalog():
         ("ball", "带球"),
         ("roller", "带轮"),
         ("navigation", "视觉导航"),
+        ("office", "办公区寻物"),
     ]:
         roller = id == "roller"
         actions = [
@@ -98,6 +99,7 @@ def catalog():
                     "ball": "带球模型 · 踢球前自动将球放到对应脚前",
                     "roller": "带轮模型 · 转向输入为相对航向误差",
                     "navigation": "视觉导航 · 红色方块、蓝色圆柱、黄色球体",
+                    "office": "办公区 · 会议室 101/102/103、工位与五色可滚动小球",
                 }[id],
             )
         )
@@ -134,12 +136,18 @@ class MicroduckScene:
         import mujoco
         from behaviors import Behaviors
         from runtime import Runtime
+        from office import office_scene, SPAWN
 
         self.runtime = Runtime(
             cache,
             mode="roller" if scene_id == "roller" else "walk",
             ball=scene_id == "ball",
-            scene_setup=navigation_scene if scene_id == "navigation" else None,
+            scene_setup=office_scene
+            if scene_id == "office"
+            else navigation_scene
+            if scene_id == "navigation"
+            else None,
+            spawn_xy=SPAWN if scene_id == "office" else (0, 0),
         )
         # 固定版本模型的相机负 Z 轴朝向头壳内部，且图像上方朝身体左侧。
         # 头部局部 -Z 是脸部前方，局部 +X 是上方；绕局部 Z 转 -90° 后，
@@ -149,11 +157,43 @@ class MicroduckScene:
         self.behaviors = Behaviors(self.runtime)
         self.renderer = None
         self.observer_renderer = None
+        self.model_label = ""
+        # 只选墙面和门楣，不把工位隔板、家具、门牌一起变透明。
+        wall_names = {
+            "west_wall",
+            "east_wall",
+            "north_wall",
+            "south_wall",
+            "meeting_divider",
+            "101_left",
+            "101_right",
+            "102_left",
+            "102_right",
+            "103_south",
+            "103_north",
+            "103_lintel",
+            "lintel_-1.5",
+            "lintel_0.65",
+        }
+        self.preview_wall_ids = (
+            {
+                i
+                for i in range(self.runtime.model.ngeom)
+                if self.runtime.model.geom(i).name
+                in {"office_" + name for name in wall_names}
+            }
+            if scene_id == "office"
+            else set()
+        )
         self.resize(1280)
         self.camera = mujoco.MjvCamera()
+        self.camera_pan = [0.0, 0.0, 0.0]
         self.camera.distance = 0.85
         self.camera.azimuth = 135
         self.camera.elevation = -20
+        if scene_id == "office":
+            self.camera.distance = 9.0
+            self.camera.elevation = -65
 
     def action(self, id):
         entry = next((item for item in self.spec["actions"] if item["id"] == id), None)
@@ -177,11 +217,12 @@ class MicroduckScene:
         self.behaviors.step()
 
     def navigation_context(self):
+        self.remember_objects()
         actions = [item["id"] for item in self.spec["actions"]]
         if "sitstand" in actions:
             actions.remove("sitstand")
             actions += ["sit", "stand"]
-        return dict(
+        context = dict(
             available_actions=actions,
             posture=self.behaviors.stage,
             active=self.behaviors.active,
@@ -189,6 +230,90 @@ class MicroduckScene:
             scene_description=self.spec["description"],
             head=self.head_feedback(),
         )
+        if self.spec["id"] == "office":
+            context["available_search_actions"] = [
+                "search_open",
+                "search_101",
+                "search_102",
+                "search_103",
+            ]
+            x, y, yaw = self.motion_pose()
+            room = (
+                "101"
+                if y > 0.7 and x < 0
+                else "102"
+                if y > 0.7
+                else "103"
+                if x > 1.4
+                else "开放办公区"
+            )
+            context["office_search"] = dict(
+                current_region=room,
+                observer_pose=dict(
+                    x_m=round(x, 2),
+                    y_m=round(y, 2),
+                    heading_deg=round(math.degrees(yaw)),
+                ),
+                floorplan="办公室范围 x=-3..3、y=-2.5..2.5 米；101 门中心(-1.5,0.7)，102 门中心(0.65,0.7)，103 门中心(1.4,-0.8)。门宽0.8米，工位在中间；门口有实体号码。坐标仅为已知建筑平面图，不包含目标位置。",
+                guidance="小球可能在房间或家具后面。原地转一圈不能搜索整间办公室；结合历史中的已观察位置分区探索，先对准门洞再进入。只把看见的区域算作观察过，不把所在房间算作已经找遍。",
+            )
+            context["obstacles"] = self.obstacle_clearance()
+            if getattr(self, "object_memory", None) is not None:
+                context["object_memory"] = self.object_memory.current()
+        return context
+
+    def remember_objects(self):
+        """同时记住视野内所有颜色小球，不仅仅记录当前任务要找的颜色。"""
+        memory = getattr(self, "object_memory", None)
+        if memory is None or self.spec["id"] != "office":
+            return
+        now = float(self.runtime.data.time)
+        if now - getattr(self, "memory_sample_time", -1) < 0.2:
+            return
+        from proximity import color_mask, measure
+
+        rgb = self.head_rgb()
+        renderer = self.observer_renderer
+        renderer.enable_depth_rendering()
+        try:
+            depth = renderer.render()
+        finally:
+            renderer.disable_depth_rendering()
+        r = self.runtime
+        camera = r.model.camera("head_camera").id
+        detections = []
+        for color, label in {
+            "red": "红色",
+            "blue": "蓝色",
+            "yellow": "黄色",
+            "green": "绿色",
+            "purple": "紫色",
+        }.items():
+            if color_mask(rgb, color).sum() < 30:
+                continue
+            p = measure(
+                rgb,
+                depth,
+                r.model.cam_fovy[camera],
+                r.data.cam_xpos[camera],
+                r.data.cam_xmat[camera],
+                self.motion_pose(),
+                color,
+                ball=True,
+            )
+            verified = p.get("visible", False)
+            detections.append(
+                dict(
+                    object_id=f"ball:{color}",
+                    name=label + ("小球" if verified else "物体候选"),
+                    color=color,
+                    kind="ball" if verified else "color_candidate",
+                    position=p.get("estimated_position_m"),
+                    source="head_rgbd" if verified else "head_rgb_color",
+                )
+            )
+        memory.observe(detections, now, self.motion_pose())
+        self.memory_sample_time = now
 
     def head_feedback(self):
         r = self.runtime
@@ -200,6 +325,28 @@ class MicroduckScene:
             camera_pitch_deg=round(
                 math.degrees(math.asin(max(-1, min(1, direction_z)))), 1
             ),
+        )
+
+    def body_stable(self):
+        """用真实基座速度辅助判定停步，不能只靠某一帧位置变化小。"""
+        import numpy as np
+
+        r = self.runtime
+        adr = int(r.model.joint("trunk_base_freejoint").dofadr[0])
+        velocity = r.data.qvel[adr : adr + 6]
+        up = r.data.xmat[r.root_id].reshape(3, 3)[2, 2]
+        return bool(
+            np.isfinite(velocity).all()
+            and np.linalg.norm(velocity[:3]) < 0.025
+            and np.linalg.norm(velocity[3:]) < 0.25
+            and up > math.cos(0.2)
+        )
+
+    def head_command_reached(self):
+        import numpy as np
+
+        return bool(
+            np.max(np.abs(self.runtime.head_command - self.runtime.head_target)) < 0.001
         )
 
     def navigation_action(self, name):
@@ -257,6 +404,12 @@ class MicroduckScene:
             time_s=float(r.data.time),
             policy=r.active_policy,
             position_m=r.data.xpos[r.root_id].tolist(),
+            external_camera=dict(
+                azimuth=self.camera.azimuth,
+                elevation=self.camera.elevation,
+                distance=self.camera.distance,
+                pan=list(self.camera_pan),
+            ),
             render_width=self.renderer.width,
             render_height=self.renderer.height,
             **self.behaviors.status(),
@@ -282,22 +435,81 @@ class MicroduckScene:
         if previous:
             previous.close()
 
-    def view(self, azimuth, elevation, distance):
+    def view(self, azimuth, elevation, distance, pan=None):
         self.camera.azimuth = azimuth
         self.camera.elevation = elevation
         self.camera.distance = distance
+        if pan is not None:
+            self.camera_pan = list(pan)
+
+    def set_model_label(self, name):
+        # MuJoCo 的几何标签缓冲区有限；标签只进入外部画面，不进入模型的视觉输入。
+        self.model_label = (
+            str(name or "").encode("utf-8")[:90].decode("utf-8", errors="ignore")
+        )
 
     def frame(self, view="external"):
         if view not in ("external", "head"):
             raise ValueError("未知观察视角")
-        self.camera.lookat[:] = self.runtime.data.xpos[self.runtime.root_id]
+        self.camera.lookat[:] = (
+            (0, 0, 0.3)
+            if self.spec["id"] == "office"
+            else self.runtime.data.xpos[self.runtime.root_id]
+        )
+        # 每帧的默认观察中心仍可跟随机器人；用户拖动产生的偏移单独保留。
+        self.camera.lookat[:] += self.camera_pan
         self.renderer.update_scene(
             self.runtime.data, camera="head_camera" if view == "head" else self.camera
         )
+        if view == "external" and self.preview_wall_ids:
+            import mujoco
+
+            # 只改本帧外部渲染副本。绝不改 model.geom_rgba，因此头部 RGB、
+            # 深度传感器、模型输入与物理碰撞仍使用不透明的真实墙体。
+            for geom in self.renderer.scene.geoms[: self.renderer.scene.ngeom]:
+                if (
+                    geom.objtype == mujoco.mjtObj.mjOBJ_GEOM
+                    and geom.objid in self.preview_wall_ids
+                ):
+                    geom.rgba[3] = 0.18
+                    geom.transparent = 1
+        if view == "external" and self.model_label:
+            import mujoco
+            import numpy as np
+
+            scene = self.renderer.scene
+            if scene.ngeom < scene.maxgeom:
+                camera = self.runtime.model.camera("head_camera").id
+                head_body = self.runtime.model.cam_bodyid[camera]
+                position = self.runtime.data.xpos[head_body].copy()
+                position[2] += 0.075
+                geom = scene.geoms[scene.ngeom]
+                mujoco.mjv_initGeom(
+                    geom,
+                    mujoco.mjtGeom.mjGEOM_LABEL,
+                    np.zeros(3),
+                    position,
+                    np.eye(3).ravel(),
+                    np.array([1, 1, 1, 1], dtype=np.float32),
+                )
+                geom.label = self.model_label
+                scene.ngeom += 1
         return png(self.renderer.render())
+
+    def observation_sample(self, task):
+        """同一帧生成原图和颜色候选，运动中不读取目标位置或模型物体 ID。"""
+        from proximity import color_mask, target_color
+
+        rgb = self.head_rgb()
+        color = target_color(task)
+        candidate = bool(color and color_mask(rgb, color).sum() >= 30)
+        return png(rgb), candidate
 
     def observe(self):
         """读取头部 RGB 图像，不读取目标坐标或外部观察画面。"""
+        return png(self.head_rgb())
+
+    def head_rgb(self):
         import mujoco
 
         if self.observer_renderer is None:
@@ -305,13 +517,29 @@ class MicroduckScene:
                 self.runtime.model, height=360, width=640
             )
         self.observer_renderer.update_scene(self.runtime.data, camera="head_camera")
-        return png(self.observer_renderer.render())
+        return self.observer_renderer.render()
+
+    def depth_preview(self):
+        """与彩色相机同视角的深度预览；切换渲染模式不推进物理时间。"""
+        from depth_preview import colorize
+
+        renderer = self.observer_renderer
+        if renderer is None:
+            self.head_rgb()
+            renderer = self.observer_renderer
+        renderer.update_scene(self.runtime.data, camera="head_camera")
+        renderer.enable_depth_rendering()
+        try:
+            return png(colorize(renderer.render()))
+        finally:
+            # 即使编码失败，也必须恢复 RGB，避免污染下一次模型观察。
+            renderer.disable_depth_rendering()
 
     def proximity(self, task):
         from proximity import target_color, measure
 
         color = target_color(task)
-        if self.spec["id"] != "navigation" or color is None:
+        if self.spec["id"] not in {"navigation", "office"} or color is None:
             return None
         self.observe()
         renderer = self.observer_renderer
@@ -331,6 +559,29 @@ class MicroduckScene:
             r.data.cam_xmat[camera],
             self.motion_pose(),
             color,
+            ball=self.spec["id"] == "office",
+        )
+
+    def obstacle_clearance(self):
+        if self.spec["id"] != "office":
+            return None
+        from proximity import clearance
+
+        self.observe()
+        renderer = self.observer_renderer
+        renderer.enable_depth_rendering()
+        try:
+            depth = renderer.render()
+        finally:
+            renderer.disable_depth_rendering()
+        r = self.runtime
+        camera = r.model.camera("head_camera").id
+        return clearance(
+            depth,
+            r.model.cam_fovy[camera],
+            r.data.cam_xpos[camera],
+            r.data.cam_xmat[camera],
+            self.motion_pose(),
         )
 
     def close(self):

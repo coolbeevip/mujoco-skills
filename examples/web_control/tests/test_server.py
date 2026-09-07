@@ -44,6 +44,9 @@ class FakeScene:
     def observe(self):
         return b"head frame"
 
+    def depth_preview(self):
+        return b"depth frame"
+
     def motion_pose(self):
         return getattr(self, "x", 0), 0, getattr(self, "yaw", 0)
 
@@ -71,6 +74,8 @@ class EngineTests(unittest.TestCase):
         self.send("load", scene="navigation")
         self.assertEqual(self.engine.frame, b"fake frame")
         self.assertEqual(self.engine.head_frame, b"head frame")
+        self.assertEqual(self.engine.depth_frame, b"depth frame")
+        self.assertTrue(self.engine.read()["depth_frame_available"])
         self.assertTrue(self.engine.read()["head_frame_available"])
         previous_steps = self.engine.scene.steps
         self.engine.render()
@@ -89,6 +94,32 @@ class EngineTests(unittest.TestCase):
             self.engine.render()
         self.assertEqual(
             (self.engine.frame, self.engine.head_frame, self.engine.frame_id), previous
+        )
+
+    def test_depth_failure_keeps_all_previous_frames(self):
+        self.send("load", scene="walk")
+        previous = (
+            self.engine.frame,
+            self.engine.head_frame,
+            self.engine.depth_frame,
+            self.engine.frame_id,
+        )
+        self.engine.scene.frame = lambda view: b"new external frame"
+
+        def fail():
+            raise ValueError("depth failed")
+
+        self.engine.scene.depth_preview = fail
+        with self.assertRaises(ValueError):
+            self.engine.render()
+        self.assertEqual(
+            (
+                self.engine.frame,
+                self.engine.head_frame,
+                self.engine.depth_frame,
+                self.engine.frame_id,
+            ),
+            previous,
         )
 
     def send(self, op, **extra):
@@ -221,6 +252,11 @@ class EngineTests(unittest.TestCase):
                 self.send("camera", azimuth=0, elevation=-20, distance=distance)
         self.send("camera", azimuth=30, elevation=-20, distance=1)
         self.assertEqual(self.engine.scene.camera, (30, -20, 1))
+        self.send("camera", azimuth=30, elevation=-20, distance=1, pan=[1, -2, 0.5])
+        self.assertEqual(self.engine.scene.camera, (30, -20, 1, [1, -2, 0.5]))
+        for pan in [None, [], [1, 2], [0, 0, True], [0, 0, float("nan")], [21, 0, 0]]:
+            with self.assertRaises(ValueError):
+                self.send("camera", azimuth=30, elevation=-20, distance=1, pan=pan)
         self.send("reset")
         self.assertEqual(self.engine.scene.steps, 0)
         self.assertTrue(self.engine.paused)
@@ -292,18 +328,51 @@ class HttpTests(unittest.TestCase):
         with urlopen(Request(self.base + path, **kwargs), timeout=5) as response:
             return response.read()
 
+    def test_object_memory_api_is_cached_and_reset_marks_old_world_historical(self):
+        self.engine.apply(dict(op="load", scene="office", generation=0))
+        self.engine.object_memory.observe(
+            [dict(object_id="ball:purple", name="紫色小球", position=[2, -2])],
+            1,
+            [0, 0, 0],
+        )
+        self.engine.render()
+        record = json.loads(self.get("/api/object-memory"))["objects"][0]
+        self.assertEqual(record["position"], [2, -2])
+        self.assertFalse(record["historical"])
+        self.engine.apply(dict(op="reset", generation=self.engine.generation))
+        record = json.loads(self.get("/api/object-memory"))["objects"][0]
+        self.assertTrue(record["historical"])
+        self.assertFalse(record["position_verified_now"])
+        self.assertEqual(self.engine.object_memory.current(), [])
+
+    def test_observation_image_is_immutable_and_released_with_task(self):
+        with self.engine.lock:
+            self.engine.observation_images = {"task-one-1": b"exact submitted png"}
+            self.engine.head_frame = b"new live frame"
+        self.assertEqual(
+            self.get("/api/observation-image/task-one-1"), b"exact submitted png"
+        )
+        self.engine.publish()
+        with self.assertRaises(HTTPError) as error:
+            self.get("/api/observation-image/task-one-1")
+        self.assertEqual(error.exception.code, 404)
+
     def test_catalog_and_static_allowlist(self):
         data = json.loads(self.get("/api/catalog"))
         self.assertEqual(
-            [s["id"] for s in data["scenes"]], ["walk", "ball", "roller", "navigation"]
+            [s["id"] for s in data["scenes"]],
+            ["walk", "ball", "roller", "navigation", "office"],
         )
-        self.assertEqual([len(s["actions"]) for s in data["scenes"]], [12, 12, 5, 12])
+        self.assertEqual(
+            [len(s["actions"]) for s in data["scenes"]], [12, 12, 5, 12, 12]
+        )
         self.assertIn(b"app.js", self.get("/"))
         for path in [
             "/server.py",
             "/../microduck/.cache",
             "/api/frame",
             "/api/head-frame",
+            "/api/depth-frame",
         ]:
             with self.assertRaises(HTTPError) as caught:
                 self.get(path)
@@ -314,6 +383,7 @@ class HttpTests(unittest.TestCase):
         for path, expected in [
             ("/api/frame", b"fake frame"),
             ("/api/head-frame", b"head frame"),
+            ("/api/depth-frame", b"depth frame"),
         ]:
             with urlopen(self.base + path, timeout=5) as response:
                 self.assertEqual(response.read(), expected)

@@ -54,7 +54,8 @@ class MotionTests(unittest.TestCase):
         motion = self.run_goal(Plant(recoil=10), "right", 30)
         self.assertEqual(motion.status, "reached")
         self.assertAlmostEqual(motion.angle, -30, delta=5)
-        self.assertGreater(motion.steps, 100)
+        # 回摆后必须再次停步复核；不再用固定总等待时长推断是否发生补偿。
+        self.assertGreaterEqual(motion.total_settle_steps, 40)
 
     def test_stuck_is_not_reported_as_completed(self):
         plant = Plant(stuck=True)
@@ -78,6 +79,49 @@ class MotionTests(unittest.TestCase):
         ]:
             with self.assertRaises(ValueError):
                 Motion(action, amount, pose)
+
+    def test_stable_plant_can_finish_settling_early(self):
+        motion = self.run_goal(Plant(), "forward", 30)
+        self.assertEqual(motion.status, "reached")
+        self.assertEqual(motion.total_settle_steps, 20)
+
+    def test_unstable_body_cannot_finish_settling_early(self):
+        plant = Plant()
+        plant.body_stable = lambda: False
+        motion = self.run_goal(plant, "forward", 30)
+        self.assertEqual(motion.total_settle_steps, 50)
+
+    def test_continuous_extension_has_one_stop_and_bounded_length(self):
+        plant = Plant()
+        motion = Motion("forward", 30, plant.motion_pose())
+        while motion.distance < 25:
+            motion.tick(plant)
+        stops = plant.stops
+        motion.extend(30)
+        self.assertEqual(plant.stops, stops)
+        with self.assertRaises(ValueError):
+            motion.extend(5)
+        while motion.status == "running":
+            motion.tick(plant)
+        self.assertEqual(motion.status, "reached")
+        self.assertAlmostEqual(motion.distance, 60, delta=2.5)
+        self.assertEqual(motion.total_settle_steps, 20)
+
+    def test_speed_input_is_bounded(self):
+        for speed in (0.5, 0, float("nan"), True):
+            with self.assertRaises(ValueError):
+                Motion("forward", 30, (0, 0, 0), forward_speed=speed)
+
+    def test_final_check_uses_real_target_not_old_recoil_aim(self):
+        plant = Plant()
+        motion = Motion("left", 13, plant.motion_pose())
+        plant.yaw = math.radians(14)
+        motion.steps, motion.aim = 450, 35
+        while motion.status == "running":
+            motion.tick(plant)
+        self.assertEqual(motion.status, "reached")
+        self.assertLess(motion.steps, 500)
+        self.assertGreaterEqual(motion.total_settle_steps, 20)
 
 
 if __name__ == "__main__":

@@ -39,7 +39,12 @@ def main():
             scene.step()
         state = scene.runtime.snapshot()
         head = scene.observe()
+        scene.set_model_label("ric/qwen3.7-plus")
         external = scene.frame()
+        assert (
+            scene.renderer.scene.geoms[scene.renderer.scene.ngeom - 1].label
+            == "ric/qwen3.7-plus"
+        )
         # 改动外部观察相机，不应改变头部相机图像或机器人状态。
         scene.view(45, -35, 1.8)
         assert scene.frame() != external

@@ -97,11 +97,19 @@ def validate_policy(session, command_names="twist,head_pose,body_pose"):
 
 class Runtime:
     def __init__(
-        self, cache=DEFAULT_CACHE, seed=0, *, mode="walk", ball=False, scene_setup=None
+        self,
+        cache=DEFAULT_CACHE,
+        seed=0,
+        *,
+        mode="walk",
+        ball=False,
+        scene_setup=None,
+        spawn_xy=(0, 0),
     ):
         if mode not in ("walk", "roller") or (ball and mode != "walk"):
             raise ValueError("mode must be walk or roller; ball requires walk mode")
         self.mode = mode
+        self.spawn_xy = vector(spawn_xy, 2, "spawn xy")
         # 官方 head_pose 顺序：neck_pitch、head_pitch、head_yaw、head_roll，
         # 数值是相对默认姿态的弧度偏移，不是直接覆盖电机目标。
         self.head_command = np.zeros(4, dtype=np.float32)
@@ -195,7 +203,7 @@ class Runtime:
         self.gyro = int(self.model.sensor("imu_ang_vel").adr[0])
         root_qpos = self.model.joint("trunk_base_freejoint").qposadr[0]
         height = 0.1385 if self.mode == "roller" else 0.125
-        self.data.qpos[root_qpos : root_qpos + 7] = [0, 0, height, 1, 0, 0, 0]
+        self.data.qpos[root_qpos : root_qpos + 7] = [*self.spawn_xy, height, 1, 0, 0, 0]
         # 前 7 维是基座位置和 wxyz 四元数，其余关节按策略顺序写入默认角度。
         self.data.qpos[self.qids] = POSE
         self.controller.reset(self.data.qpos)

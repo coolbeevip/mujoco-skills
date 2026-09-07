@@ -2,6 +2,14 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {describeDecision} = require('../decisions.js');
 
+test('高层搜索显示观察点和控制阶段，不冒充任务完成', () => {
+  const row=describeDecision({action:'search_103',amount:0,observation:1,confidence:.8,target_visible:false,execution:{status:'reached',search_phase:'target_visible',point:1,segments:[{},{}]}});
+  assert.match(row.title,/搜索会议室 103/);
+  assert.match(row.result,/发现目标，交回模型判断/);
+  assert.match(row.result,/观察点 2/);
+  assert.doesNotMatch(row.result,/undefined|任务已完成/);
+});
+
 test('区分模型自评与深度测距', () => {
   const row=describeDecision({action:'sit',amount:0,observation:2,confidence:.99,target_visible:true,proximity:{visible:true,surface_distance_cm:25.1,bearing_deg:-2,near:true}});
   assert.match(row.assessment,/深度测距 25.1 厘米/);

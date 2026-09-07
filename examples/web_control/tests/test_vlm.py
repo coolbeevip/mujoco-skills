@@ -26,6 +26,21 @@ DECISION = dict(
 
 
 class ConfigTests(unittest.TestCase):
+    def test_openai_provider_name_uses_compatible_protocol(self):
+        config = Config.from_env(
+            dict(
+                VLM_PROVIDER="openai",
+                VLM_MODEL="vision-model",
+                VLM_BASE_URL="http://127.0.0.1:9000",
+                VLM_API_KEY="test-key",
+            )
+        )
+        self.assertEqual(config.public()["provider"], "openai")
+        self.assertEqual(config.api_key, "test-key")
+        path, body = Provider(config).payload("任务", b"png", [])
+        self.assertEqual(path, "/chat/completions")
+        self.assertEqual(body["model"], "vision-model")
+
     def test_env_file_loading_preserves_environment(self):
         path = Mock()
         path.read_text.return_value = "# local\nexport VLM_MODEL='file-model'\nVLM_API_KEY=local-key\nHOME=ignored\n"
@@ -310,7 +325,10 @@ class ProtocolTests(unittest.TestCase):
                 engine.tick()
                 time.sleep(0.001)
             self.assertEqual(len(engine.navigation.history), 2)
-            self.assertGreater(engine.scene.steps, 100)
+            self.assertGreater(engine.scene.steps, 50)
+            self.assertEqual(
+                engine.navigation.history[0]["execution"]["status"], "reached"
+            )
             self.assertEqual(engine.navigation.phase, "moving")
             self.assertEqual(len(self.received), 2)
             second = self.received[1][1]["messages"][1]["content"][0]["text"]

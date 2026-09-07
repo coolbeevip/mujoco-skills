@@ -14,3 +14,4 @@ htmlcov/
 *.sock
 .idea/
 /team-spec/
+MUJOCO_LOG.TXT
